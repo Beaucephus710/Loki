@@ -8,9 +8,14 @@
 # Install on Ubuntu/Debian: sudo apt-get install gcc-arm-linux-gnueabihf
 
 ## Compiler Settings
-CC := arm-linux-gnueabihf-gcc
-CFLAGS := -Wall -Wextra -march=armv7-a -mtune=cortex-a7
-CFLAGS += -I. 
+CC := $(shell command -v arm-linux-gnueabihf-gcc 2>/dev/null)
+ifeq ($(CC),)
+CC := gcc
+endif
+CFLAGS := -Wall -Wextra -I.
+ifeq ($(notdir $(CC)),arm-linux-gnueabihf-gcc)
+	CFLAGS += -march=armv7-a -mtune=cortex-a7
+endif
  
 ## Debug/Release Build Modes
 DEBUG ?= 1
@@ -70,7 +75,7 @@ run: install
  
 ## Local testing (without hardware)
 test: clean
-	$(MAKE) DEBUG=1 CFLAGS+=-DMOCK_HARDWARE
+	$(MAKE) DEBUG=1 CFLAGS="$(CFLAGS) -DMOCK_HARDWARE"
 	./build/debug/$(TARGET)
  
 ## Documentation generation (requires Doxygen)
