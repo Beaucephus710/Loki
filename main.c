@@ -12,18 +12,43 @@
 #include <signal.h>
 #include <string.h>
 
-#include "core/system.h"
-#include "drivers/tft/tft_driver.h"
-#include "drivers/sdcard/sdcard_driver.h"
-#include "drivers/flash/flash_driver.h"
-#include "drivers/eeprom/eeprom_driver.h"
-#include "drivers/flipper_uart/flipper_uart.h"
-#include "utils/log.h"
-#include "utils/memory.h"
-#include "utils/retry.h"
+#include "system.h"
+#include "tft_driver.h"
+#include "sdcard_driver.h"
+#include "flash_driver.h"
+#include "eeprom_driver.h"
+#include "flipper_uart.h"
+#include "log.h"
+#include "memory.h"
+#include "retry.h"
 
 /* ===== GLOBAL STATE ===== */
 volatile sig_atomic_t should_exit = 0;
+
+typedef struct {
+    uint8_t address;
+    const uint8_t *write_buffer;
+    uint8_t *read_buffer;
+    uint16_t length;
+} eeprom_retry_context_t;
+
+static hal_status_t eeprom_write_retry_op(void *context)
+{
+    eeprom_retry_context_t *ctx = (eeprom_retry_context_t *)context;
+    return eeprom_write(ctx->address, ctx->write_buffer, ctx->length);
+}
+
+static hal_status_t eeprom_read_retry_op(void *context)
+{
+    eeprom_retry_context_t *ctx = (eeprom_retry_context_t *)context;
+    return eeprom_read(ctx->address, ctx->read_buffer, ctx->length);
+}
+
+static hal_status_t flash_jedec_retry_op(void *context)
+{
+    uint8_t *jedec_id = (uint8_t *)context;
+    return flash_get_jedec_id(jedec_id);
+}
 
 /* ===== SIGNAL HANDLERS ===== */
 /**
@@ -73,7 +98,13 @@ static void test_eeprom(void)
     uint8_t read_data[8] = {0};
 
     /* Write to EEPROM with retry logic */
-    hal_status_t status = RETRY(eeprom_write(0, write_data, 8), RETRY_BALANCED);
+    eeprom_retry_context_t write_ctx = {
+        .address = 0,
+        .write_buffer = write_data,
+        .read_buffer = NULL,
+        .length = 8,
+    };
+    hal_status_t status = RETRY(eeprom_write_retry_op, &write_ctx, RETRY_BALANCED);
     
     if (status != HAL_OK) {
         LOG_ERROR("Failed to write EEPROM after retries");
@@ -84,7 +115,13 @@ static void test_eeprom(void)
     sleep(1);  /* Wait for write to complete */
 
     /* Read from EEPROM */
-    status = RETRY(eeprom_read(0, read_data, 8), RETRY_BALANCED);
+    eeprom_retry_context_t read_ctx = {
+        .address = 0,
+        .write_buffer = NULL,
+        .read_buffer = read_data,
+        .length = 8,
+    };
+    status = RETRY(eeprom_read_retry_op, &read_ctx, RETRY_BALANCED);
     
     if (status != HAL_OK) {
         LOG_ERROR("Failed to read EEPROM");
@@ -114,7 +151,7 @@ static void test_flash(void)
     LOG_INFO("Running Flash Memory Test...");
 
     uint8_t jedec_id[3];
-    hal_status_t status = RETRY(flash_get_jedec_id(jedec_id), RETRY_BALANCED);
+    hal_status_t status = RETRY(flash_jedec_retry_op, jedec_id, RETRY_BALANCED);
     
     if (status == HAL_OK) {
         LOG_INFO("Flash JEDEC ID: 0x%02X%02X%02X", jedec_id[0], jedec_id[1], jedec_id[2]);

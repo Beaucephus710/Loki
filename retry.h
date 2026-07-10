@@ -9,7 +9,7 @@
  * operations that may fail transiently.
  */
 
-#include "../includes/types.h"
+#include "types.h"
 
 /* ===== RETRY CONFIGURATION ===== */
 
@@ -18,6 +18,8 @@ typedef struct {
     uint16_t initial_delay_ms; /* Initial delay between retries */
     uint8_t backoff_factor;    /* Delay multiplier on each retry (1.0x = no backoff) */
 } retry_config_t;
+
+typedef hal_status_t (*retry_operation_t)(void *context);
 
 /* Default retry strategies */
 extern const retry_config_t RETRY_AGGRESSIVE;  /* 10 attempts, minimal delay */
@@ -36,10 +38,10 @@ extern const retry_config_t RETRY_NONE;        /* No retry */
  * @return HAL_OK on success, or last error code
  * 
  * Usage:
- *   status = RETRY(spi_write(SPI_BUS_0, pin, data, len), RETRY_BALANCED);
+ *   status = RETRY(my_retry_op, my_context, RETRY_BALANCED);
  */
-#define RETRY(func, config) \
-    retry_execute((func), (config), #func, __FILE__, __LINE__)
+#define RETRY(op, context, config) \
+    retry_execute((op), (context), (config), #op, __FILE__, __LINE__)
 
 /**
  * @def RETRY_BLOCK
@@ -56,15 +58,17 @@ extern const retry_config_t RETRY_NONE;        /* No retry */
 
 /**
  * Execute function with automatic retries on failure
- * @param[in] result Result of function call
+ * @param[in] operation Callback executed on each retry attempt
+ * @param[in] context Opaque context passed to callback
  * @param[in] config Retry configuration
  * @param[in] func_name Function name for logging
  * @param[in] file Source file
  * @param[in] line Source line
  * @return Final status code
  */
-hal_status_t retry_execute(hal_status_t result, const retry_config_t config,
-                           const char *func_name, const char *file, int line);
+hal_status_t retry_execute(retry_operation_t operation, void *context,
+                           const retry_config_t config, const char *func_name,
+                           const char *file, int line);
 
 /**
  * Test if an error is retryable

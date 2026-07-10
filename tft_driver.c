@@ -4,10 +4,10 @@
  */
 
 #include "tft_driver.h"
-#include "../../hal/spi/spi.h"
-#include "../../hal/gpio/gpio.h"
-#include "../../hal/pwm/pwm.h"
-#include "../../config/pinout.h"
+#include "spi.h"
+#include "gpio.h"
+#include "pwm.h"
+#include "pinout.h"
 #include <stdio.h>
 #include <unistd.h>
 
@@ -242,9 +242,22 @@ hal_status_t tft_fill_rect(uint16_t x, uint16_t y, uint16_t width, uint16_t heig
         color & 0xFF,          /* Low byte */
     };
 
-    /* Write same color for all pixels */
-    for (uint32_t i = 0; i < pixel_count; i++) {
-        tft_write_data(color_bytes, 2);
+    /* Write same color in chunks to avoid per-pixel SPI calls */
+    enum { TFT_FILL_CHUNK_PIXELS = 256 };
+    uint8_t chunk[TFT_FILL_CHUNK_PIXELS * 2];
+    for (uint32_t i = 0; i < TFT_FILL_CHUNK_PIXELS; i++) {
+        chunk[(i * 2)] = color_bytes[0];
+        chunk[(i * 2) + 1] = color_bytes[1];
+    }
+
+    uint32_t remaining = pixel_count;
+    while (remaining > 0) {
+        uint32_t pixels_to_write = (remaining > TFT_FILL_CHUNK_PIXELS) ? TFT_FILL_CHUNK_PIXELS : remaining;
+        hal_status_t status = tft_write_data(chunk, pixels_to_write * 2);
+        if (status != HAL_OK) {
+            return status;
+        }
+        remaining -= pixels_to_write;
     }
 
     return HAL_OK;

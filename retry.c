@@ -58,34 +58,36 @@ int is_retryable_error(hal_status_t error)
     }
 }
 
-hal_status_t retry_execute(hal_status_t result, const retry_config_t config,
-                           const char *func_name, const char *file, int line)
+hal_status_t retry_execute(retry_operation_t operation, void *context,
+                           const retry_config_t config, const char *func_name,
+                           const char *file, int line)
 {
-    /* Success on first try */
-    if (result == HAL_OK) {
-        return HAL_OK;
+    if (operation == NULL) {
+        return HAL_INVALID_PARAM;
     }
 
-    /* Non-retryable error */
-    if (!is_retryable_error(result)) {
-        LOG_ERROR("[%s() at %s:%d] Non-retryable error: %d", func_name, file, line, result);
-        return result;
-    }
-
-    /* Perform retries */
+    hal_status_t result = HAL_ERROR;
     uint32_t delay_ms = config.initial_delay_ms;
-    
-    for (uint8_t attempt = 1; attempt < config.max_attempts; attempt++) {
-        LOG_WARN("[%s() at %s:%d] Retrying (%d/%d)... waiting %u ms",
-                func_name, file, line, attempt, config.max_attempts, delay_ms);
-        
-        /* Wait before retry */
-        usleep(delay_ms * 1000);
-        
-        /* Exponential backoff */
-        delay_ms = (delay_ms * config.backoff_factor);
-        if (delay_ms > 5000) {
-            delay_ms = 5000;  /* Cap at 5 seconds */
+
+    for (uint8_t attempt = 1; attempt <= config.max_attempts; attempt++) {
+        result = operation(context);
+        if (result == HAL_OK) {
+            return HAL_OK;
+        }
+
+        if (!is_retryable_error(result)) {
+            LOG_ERROR("[%s() at %s:%d] Non-retryable error: %d", func_name, file, line, result);
+            return result;
+        }
+
+        if (attempt < config.max_attempts) {
+            LOG_WARN("[%s() at %s:%d] Retrying (%d/%d)... waiting %u ms",
+                    func_name, file, line, attempt, config.max_attempts, delay_ms);
+            usleep(delay_ms * 1000);
+            delay_ms = (delay_ms * config.backoff_factor);
+            if (delay_ms > 5000) {
+                delay_ms = 5000;  /* Cap at 5 seconds */
+            }
         }
     }
 
