@@ -1,39 +1,3 @@
-/**
- * @file gpio.c
- * @brief GPIO Hardware Abstraction Layer Implementation
- * Orange Pi Zero 2W
- */
-
-#include "gpio.h"
-#include "log.h"
-
-/* Import system resources from /sys/class/gpio (Linux sysfs) */
-static const char *GPIO_SYSFS_PATH = "/sys/class/gpio";
-
-/* ===== LOCAL FUNCTIONS ===== */
-
-/**
- * Export GPIO pin via sysfs
- */
-static hal_status_t gpio_export(uint32_t pin)
-{
-    LOG_DEBUG("Exporting GPIO pin %u", pin);
-    /* This implementation assumes sysfs GPIO access on Linux */
-    /* For actual deployment, replace with direct register access */
-    return HAL_OK;
-}
-
-/**
- * Unexport GPIO pin via sysfs
- */
-static hal_status_t gpio_unexport(uint32_t pin)
-{
-    LOG_DEBUG("Unexporting GPIO pin %u", pin);
-    return HAL_OK;
-}
-
-/* ===== PUBLIC IMPLEMENTATION ===== */
-
 hal_status_t gpio_init(void)
 {
     LOG_INFO("Initializing GPIO subsystem");
