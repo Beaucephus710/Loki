@@ -21,7 +21,7 @@ logger = logging.getLogger("loki")
 
 # Configurable values
 PLUGINS_DIR = "plugins"
-MAIN_LOOP_SLEEP = 0.1  # seconds
+MAIN_LOOP_SLEEP = 0.0167  # seconds (60 FPS = ~16.67ms per frame for responsive UI)
 
 def discover_plugins():
     """
@@ -157,7 +157,7 @@ def main():
     # Main loop: aggregate plugin states and call on_tick
     shared_state = {}
     try:
-        logger.info("Entering main loop")
+        logger.info("Entering main loop (60 FPS)")
         while True:
             # Build shared_state from plugin instances that expose .state
             shared_state.clear()
