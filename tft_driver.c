@@ -22,18 +22,28 @@
 #define ILI9488_MADCTL          0x36  /* Memory access control */
 #define ILI9488_COLMOD          0x3A  /* Interface pixel format */
 
+/* Chunk size for fill operations */
+#define TFT_FILL_CHUNK_PIXELS 256
+
 /* ===== TFT STATE ===== */
 typedef struct {
     uint8_t initialized;
     uint8_t rotation;
     uint8_t brightness;
+    uint16_t width;   /* current logical width (after rotation) */
+    uint16_t height;  /* current logical height (after rotation) */
 } tft_context_t;
 
 static tft_context_t tft_ctx = {
     .initialized = 0,
     .rotation = TFT_ROTATION,
     .brightness = TFT_BRIGHTNESS,
+    .width = TFT_WIDTH,
+    .height = TFT_HEIGHT,
 };
+
+/* Reusable static chunk buffer to avoid large stack usage */
+static uint8_t tft_fill_chunk[TFT_FILL_CHUNK_PIXELS * 2];
 
 /* ===== LOCAL HELPER FUNCTIONS ===== */
 
@@ -113,6 +123,37 @@ static hal_status_t tft_set_address_window(uint16_t x0, uint16_t y0, uint16_t x1
     return HAL_OK;
 }
 
+/**
+ * Clip an input rectangle to the current logical display bounds in tft_ctx.
+ * Modifies x/y/width/height in-place. Returns true if resulting area is non-empty.
+ */
+static bool tft_clip_rect(uint16_t *x, uint16_t *y, uint16_t *width, uint16_t *height)
+{
+    uint32_t x0 = *x;
+    uint32_t y0 = *y;
+    uint32_t x1 = x0 + (uint32_t)(*width);
+    uint32_t y1 = y0 + (uint32_t)(*height);
+
+    /* If start is outside, treat as empty */
+    if (x0 >= tft_ctx.width || y0 >= tft_ctx.height) {
+        return false;
+    }
+
+    if (x1 > tft_ctx.width) x1 = tft_ctx.width;
+    if (y1 > tft_ctx.height) y1 = tft_ctx.height;
+
+    uint32_t new_w = x1 - x0;
+    uint32_t new_h = y1 - y0;
+
+    if (new_w == 0 || new_h == 0) {
+        return false;
+    }
+
+    *width = (uint16_t)new_w;
+    *height = (uint16_t)new_h;
+    return true;
+}
+
 /* ===== PUBLIC IMPLEMENTATION ===== */
 
 hal_status_t tft_init(void)
@@ -184,6 +225,15 @@ hal_status_t tft_init(void)
     tft_write_command(ILI9488_DISPON);
     delay_ms(100);
 
+    /* Set logical width/height based on initial rotation */
+    if (tft_ctx.rotation == 1 || tft_ctx.rotation == 3) {
+        tft_ctx.width = TFT_HEIGHT;
+        tft_ctx.height = TFT_WIDTH;
+    } else {
+        tft_ctx.width = TFT_WIDTH;
+        tft_ctx.height = TFT_HEIGHT;
+    }
+
     /* Clear display */
     tft_clear();
 
@@ -202,17 +252,41 @@ hal_status_t tft_write_pixels(uint16_t x, uint16_t y, uint16_t width, uint16_t h
         return HAL_NOT_READY;
     }
 
+    /* Keep originals for potential row-by-row writes when clipped */
+    uint16_t orig_x = x, orig_y = y, orig_w = width, orig_h = height;
+
+    /* Clip to current display bounds */
+    if (!tft_clip_rect(&x, &y, &width, &height)) {
+        return HAL_INVALID_PARAM; /* nothing visible */
+    }
+
     /* Set address window */
     tft_set_address_window(x, y, x + width - 1, y + height - 1);
 
     /* Write pixel data */
     tft_write_command(ILI9488_RAMWR);
     
-    uint32_t pixel_count = width * height;
-    uint8_t *pixel_data = (uint8_t *)data;
-    uint32_t data_length = pixel_count * 2;  /* 2 bytes per pixel in RGB565 */
-    
-    tft_write_data(pixel_data, data_length);
+    uint32_t pixel_count = (uint32_t)width * (uint32_t)height;
+    const uint8_t *pixel_data = (const uint8_t *)data;
+
+    /* If the requested area was not clipped on the left/top and widths match, we can send in one chunk */
+    if (x == orig_x && y == orig_y && width == orig_w) {
+        uint32_t data_length = pixel_count * 2;  /* 2 bytes per pixel in RGB565 */
+        tft_write_data(pixel_data, data_length);
+        return HAL_OK;
+    }
+
+    /* Otherwise we must write row-by-row from the source buffer because the source may be larger
+     * than the clipped rectangle or offset.
+     */
+    for (uint32_t row = 0; row < height; row++) {
+        uint32_t src_row = (uint32_t)(row + (uint32_t)(y - orig_y));
+        uint32_t src_col = (uint32_t)(x - orig_x);
+        const uint8_t *row_ptr = pixel_data + ((src_row * (uint32_t)orig_w + src_col) * 2);
+        uint32_t row_len = (uint32_t)width * 2;
+        hal_status_t status = tft_write_data(row_ptr, row_len);
+        if (status != HAL_OK) return status;
+    }
 
     return HAL_OK;
 }
@@ -227,6 +301,11 @@ hal_status_t tft_fill_rect(uint16_t x, uint16_t y, uint16_t width, uint16_t heig
         return HAL_NOT_READY;
     }
 
+    /* Clip to current display bounds */
+    if (!tft_clip_rect(&x, &y, &width, &height)) {
+        return HAL_INVALID_PARAM; /* nothing visible */
+    }
+
     /* Set address window */
     tft_set_address_window(x, y, x + width - 1, y + height - 1);
 
@@ -234,33 +313,24 @@ hal_status_t tft_fill_rect(uint16_t x, uint16_t y, uint16_t width, uint16_t heig
     tft_write_command(ILI9488_RAMWR);
 
     /* Send color data repeatedly */
-    uint32_t pixel_count = width * height;
+    uint32_t pixel_count = (uint32_t)width * (uint32_t)height;
     
-    /* Convert color to bytes (RGB565: RRRRRGGGGGGBBBBBs) */
+    /* Convert color to bytes (RGB565: high then low) */
     uint8_t color_bytes[2] = {
         (color >> 8) & 0xFF,  /* High byte */
         color & 0xFF,          /* Low byte */
     };
 
-    /* OPTIMIZATION: Batch pixels into 256-pixel chunks (512 bytes per write)
-     * This reduces SPI transactions from 153,600 to ~600 for a full 480×320 screen clear.
-     * Instead of calling tft_write_data() 153,600 times (1 per pixel), we batch them.
-     * 
-     * Performance impact:
-     *   - Before: ~2-5 seconds for full screen clear
-     *   - After:  ~50-100 ms for full screen clear (25-50× faster)
-     */
-    enum { TFT_FILL_CHUNK_PIXELS = 256 };
-    uint8_t chunk[TFT_FILL_CHUNK_PIXELS * 2];
+    /* Prepare reusable chunk buffer */
     for (uint32_t i = 0; i < TFT_FILL_CHUNK_PIXELS; i++) {
-        chunk[(i * 2)] = color_bytes[0];
-        chunk[(i * 2) + 1] = color_bytes[1];
+        tft_fill_chunk[(i * 2)] = color_bytes[0];
+        tft_fill_chunk[(i * 2) + 1] = color_bytes[1];
     }
 
     uint32_t remaining = pixel_count;
     while (remaining > 0) {
         uint32_t pixels_to_write = (remaining > TFT_FILL_CHUNK_PIXELS) ? TFT_FILL_CHUNK_PIXELS : remaining;
-        hal_status_t status = tft_write_data(chunk, pixels_to_write * 2);
+        hal_status_t status = tft_write_data(tft_fill_chunk, pixels_to_write * 2);
         if (status != HAL_OK) {
             return status;
         }
@@ -272,7 +342,8 @@ hal_status_t tft_fill_rect(uint16_t x, uint16_t y, uint16_t width, uint16_t heig
 
 hal_status_t tft_clear(void)
 {
-    return tft_fill_rect(0, 0, TFT_WIDTH, TFT_HEIGHT, COLOR_BLACK);
+    /* Use current logical bounds so clear covers visible area regardless of rotation */
+    return tft_fill_rect(0, 0, tft_ctx.width, tft_ctx.height, COLOR_BLACK);
 }
 
 hal_status_t tft_set_brightness(uint8_t brightness)
@@ -297,18 +368,33 @@ hal_status_t tft_set_rotation(uint8_t rotation)
 
     tft_ctx.rotation = rotation;
 
-    /* Set MADCTL register based on rotation */
+    /* Set MADCTL register based on rotation
+     * MADCTL bits (ILI9488 common):
+     *  - MY (0x80) Row Address Order
+     *  - MX (0x40) Column Address Order
+     *  - MV (0x20) Row/Column Exchange
+     *  - ML (0x10) Vertical Refresh Order
+     *  - BGR(0x08) BGR color order
+     * Values chosen to match common panel wiring (MX/MV combos).
+     */
     tft_write_command(ILI9488_MADCTL);
-    
     uint8_t madctl = 0x00;
     switch (rotation) {
-        case 0: madctl = 0x00; break;  /* 0° */
-        case 1: madctl = 0x60; break;  /* 90° */
-        case 2: madctl = 0xC0; break;  /* 180° */
-        case 3: madctl = 0xA0; break;  /* 270° */
+        case 0: madctl = 0x48; break;  /* MX=0x40? typical value: 0x48 sets BGR and MX as needed */
+        case 1: madctl = 0x28; break;  /* MV bit set for 90° */
+        case 2: madctl = 0x88; break;  /* MY set for 180° */
+        case 3: madctl = 0xE8; break;  /* MY+MV for 270° */
     }
-    
     tft_write_data(&madctl, 1);
+
+    /* Update logical width/height */
+    if (rotation == 1 || rotation == 3) {
+        tft_ctx.width = TFT_HEIGHT;
+        tft_ctx.height = TFT_WIDTH;
+    } else {
+        tft_ctx.width = TFT_WIDTH;
+        tft_ctx.height = TFT_HEIGHT;
+    }
 
     return HAL_OK;
 }
