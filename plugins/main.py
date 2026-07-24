@@ -77,9 +77,9 @@ class DisplayPlugin(BasePlugin):
                                 pass
                             self.fb = None
                             print("[DisplayPlugin] framebuffer write failed; falling back to terminal")
-                        else:
-                            # no framebuffer available, but we keep the loop alive
-                            time.sleep(5.0)
+                    else:
+                        # no framebuffer available, but we keep the loop alive
+                        time.sleep(5.0)
             except Exception:
                 print("[DisplayPlugin] render loop exception:\n" + traceback.format_exc())
                 time.sleep(5.0)
