@@ -2,6 +2,7 @@
 
 import tempfile
 import unittest
+from urllib.request import urlopen
 from pathlib import Path
 
 from web_ui import ConfigWebUI, _flatten_settings, _parse_value
@@ -33,6 +34,21 @@ class TestConfigWebUI(unittest.TestCase):
             ui = ConfigWebUI(config_path)
             ui._save({"enabled": False})
             self.assertEqual(ui._load(), {"enabled": False})
+
+    def test_serves_configuration_on_loopback(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config_path = Path(directory) / "config.toml"
+            config_path.write_text("enabled = true\n")
+            ui = ConfigWebUI(config_path, port=0)
+            try:
+                ui.start()
+                port = ui.server.server_address[1]
+                with urlopen(f"http://127.0.0.1:{port}/") as response:
+                    page = response.read().decode()
+                self.assertIn("Loki configuration", page)
+                self.assertIn("csrf_token", page)
+            finally:
+                ui.stop()
 
 
 if __name__ == "__main__":

@@ -13,7 +13,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs
 
-import toml
+try:
+    import tomllib
+except ModuleNotFoundError:  # pragma: no cover - Python 3.10 and earlier
+    tomllib = None
 
 _SECRET_NAMES = {"api_key", "password", "secret", "token"}
 
@@ -39,8 +42,37 @@ def _parse_value(value: str, current):
     if isinstance(current, float):
         return float(value)
     if isinstance(current, list):
-        return toml.loads("value = " + value)["value"]
+        return tomllib.loads("value = " + value)["value"]
     return value
+
+
+def _toml_value(value) -> str:
+    if isinstance(value, bool):
+        return str(value).lower()
+    if isinstance(value, str):
+        return f'"{value.replace("\\", "\\\\").replace("\"", "\\\"")}"'
+    if isinstance(value, list):
+        return "[" + ", ".join(_toml_value(item) for item in value) + "]"
+    return str(value)
+
+
+def _dump_toml(data: dict) -> str:
+    lines = []
+
+    def write_table(table: dict, path: tuple[str, ...] = ()) -> None:
+        if path:
+            lines.append(f"[{'.'.join(path)}]")
+        for key, value in table.items():
+            if not isinstance(value, dict):
+                lines.append(f"{key} = {_toml_value(value)}")
+        for key, value in table.items():
+            if isinstance(value, dict):
+                if lines:
+                    lines.append("")
+                write_table(value, path + (key,))
+
+    write_table(data)
+    return "\n".join(lines) + "\n"
 
 
 def _set_value(data: dict, path: tuple[str, ...], value) -> None:
@@ -54,8 +86,8 @@ class ConfigWebUI:
     """Serve a CSRF-protected configuration editor on a loopback address."""
 
     def __init__(self, config_path: str | Path, host: str = "127.0.0.1", port: int = 8080):
-        if host not in {"127.0.0.1", "::1"}:
-            raise ValueError("web UI must bind to 127.0.0.1 or ::1")
+        if host != "127.0.0.1":
+            raise ValueError("web UI must bind to 127.0.0.1")
         self.config_path = Path(config_path)
         self.host = host
         self.port = port
@@ -64,7 +96,10 @@ class ConfigWebUI:
         self.thread: threading.Thread | None = None
 
     def _load(self) -> dict:
-        return toml.load(self.config_path)
+        if tomllib is None:
+            raise RuntimeError("Python 3.11 or later is required for the local web UI")
+        with self.config_path.open("rb") as config_file:
+            return tomllib.load(config_file)
 
     def _save(self, data: dict) -> None:
         fd, temporary_path = tempfile.mkstemp(
@@ -72,7 +107,7 @@ class ConfigWebUI:
         )
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as temporary:
-                toml.dump(data, temporary)
+                temporary.write(_dump_toml(data))
             os.replace(temporary_path, self.config_path)
         except Exception:
             os.unlink(temporary_path)
@@ -132,7 +167,7 @@ class ConfigWebUI:
                         if field in form:
                             _set_value(data, path, _parse_value(form[field][0], current))
                     ui._save(data)
-                except (ValueError, TypeError, toml.TomlDecodeError) as error:
+                except (ValueError, TypeError, RuntimeError) as error:
                     self.send_response(HTTPStatus.BAD_REQUEST)
                     self.send_header("Content-Type", "text/html; charset=utf-8")
                     self.end_headers()
