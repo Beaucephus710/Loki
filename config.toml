@@ -144,7 +144,7 @@ auto_handshake = false
 ##############################################
 [plugins.wpa_sec]
 enabled = true
-# Set LOKI_WPA_SEC_API_KEY in the service environment, never in this file.
+# The legacy api_key setting is ignored; set LOKI_WPA_SEC_API_KEY in the service environment.
 auto_fetch = true
 auto_upload = true
 interval = 30

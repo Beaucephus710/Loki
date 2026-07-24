@@ -16,7 +16,7 @@ from urllib.parse import parse_qs
 
 try:
     import tomllib
-except ModuleNotFoundError:  # pragma: no cover - Python 3.10 and earlier
+except ModuleNotFoundError:  # pragma: no cover - defer the Python 3.11 requirement to use
     tomllib = None
 
 _SECRET_NAMES = {"api_key", "password", "secret", "token"}
@@ -104,7 +104,7 @@ class ConfigWebUI:
 
     def _load(self) -> dict:
         if tomllib is None:
-            raise RuntimeError("Python 3.11 or later is required for the local web UI")
+            raise RuntimeError("The local web UI requires Python 3.11 or later")
         with self.config_path.open("rb") as config_file:
             return tomllib.load(config_file)
 
