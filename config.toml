@@ -138,7 +138,7 @@ auto_handshake = false
 ##############################################
 [plugins.wpa_sec]
 enabled = true
-api_key = "f0216eff13239c545958864edf66153c"
+api_key = ""  # set your wpa-sec API key here
 auto_fetch = true
 auto_upload = true
 interval = 30
