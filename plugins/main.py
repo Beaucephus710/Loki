@@ -4,9 +4,12 @@ Safe display plugin for Loki.
 Opens /dev/fb1 lazily in on_start, falls back to terminal, and exposes Plugin.
 """
 
+import logging
 import time
 import threading
 import traceback
+
+logger = logging.getLogger("loki.display_plugin")
 
 # Try to import the project's Plugin base class; fall back to a minimal base if missing.
 try:
@@ -83,19 +86,20 @@ class DisplayPlugin(BasePlugin):
             except Exception:
                 print("[DisplayPlugin] render loop exception:\n" + traceback.format_exc())
                 time.sleep(5.0)
+            time.sleep(1 / 60)
 
     def on_tick(self, state):
-        print("[DisplayPlugin] tick", flush=True)
+        logger.debug("[DisplayPlugin] tick")
         try:
             if not state:
                 return
             with self._lock:
                 snapshot = {}
-                for k in ("exp", "level", "age", "title"):
-                    for plugin_state in state.values():
-                        if isinstance(plugin_state, dict) and k in plugin_state:
-                            snapshot[k] = plugin_state[k]
-                            break
+                for plugin_state in state.values():
+                    if isinstance(plugin_state, dict):
+                        for k in ("exp", "level", "age", "title"):
+                            if k in plugin_state and k not in snapshot:
+                                snapshot[k] = plugin_state[k]
                 if snapshot:
                     self._frame = f"[Display] {snapshot}"
         except Exception:

@@ -36,6 +36,27 @@ static sdcard_context_t sdcard_ctx = {
 /* ===== LOCAL HELPER FUNCTIONS ===== */
 
 /**
+ * Calculate CRC7 for SD command packet bytes
+ * Uses polynomial x^7 + x^3 + 1 (0x09), with stop bit set in LSB
+ */
+static uint8_t sdcard_crc7(const uint8_t *data, uint8_t len)
+{
+    uint8_t crc = 0;
+    for (uint8_t i = 0; i < len; i++) {
+        uint8_t byte = data[i];
+        for (int bit = 0; bit < 8; bit++) {
+            crc <<= 1;
+            if ((byte ^ crc) & 0x80) {
+                crc ^= 0x09;
+            }
+            byte <<= 1;
+        }
+        crc &= 0x7F;
+    }
+    return (crc << 1) | 1; /* Append stop bit */
+}
+
+/**
  * Send command to SD card
  */
 static hal_status_t sdcard_send_command(uint8_t cmd, uint32_t arg)
@@ -47,7 +68,7 @@ static hal_status_t sdcard_send_command(uint8_t cmd, uint32_t arg)
     cmd_packet[2] = (arg >> 16) & 0xFF;
     cmd_packet[3] = (arg >> 8) & 0xFF;
     cmd_packet[4] = arg & 0xFF;                /* Argument LSB */
-    cmd_packet[5] = 0x95;                      /* CRC */
+    cmd_packet[5] = sdcard_crc7(cmd_packet, 5); /* CRC7 with stop bit */
 
     return spi_write(SPI_BUS_1, SPI1_CS0, cmd_packet, 6);
 }
@@ -148,10 +169,18 @@ hal_status_t sdcard_read_sector(uint32_t sector, uint16_t count, uint8_t *buffer
     uint8_t response[1];
     sdcard_read_response(response, 1);
 
-    /* Wait for data token */
+    /* Wait for data token using batched reads (16 bytes per iteration) */
+    #define SD_TOKEN_BATCH_SIZE 16
     uint8_t token = 0xFF;
-    for (int i = 0; i < SD_RESPONSE_TIMEOUT; i++) {
-        sdcard_read_response(&token, 1);
+    uint8_t batch[SD_TOKEN_BATCH_SIZE];
+    for (int i = 0; i < (SD_RESPONSE_TIMEOUT / SD_TOKEN_BATCH_SIZE); i++) {
+        sdcard_read_response(batch, SD_TOKEN_BATCH_SIZE);
+        for (int j = 0; j < SD_TOKEN_BATCH_SIZE; j++) {
+            if (batch[j] == 0xFE) {
+                token = 0xFE;
+                break;
+            }
+        }
         if (token == 0xFE) {
             break;
         }
@@ -199,11 +228,21 @@ hal_status_t sdcard_write_sector(uint32_t sector, uint16_t count, const uint8_t 
     uint8_t crc[2] = {0xFF, 0xFF};
     spi_write(SPI_BUS_1, SPI1_CS0, crc, 2);
 
-    /* Wait for write completion */
+    /* Wait for data response token */
     uint8_t status = 0xFF;
     for (int i = 0; i < SD_RESPONSE_TIMEOUT && status == 0xFF; i++) {
         sdcard_read_response(&status, 1);
         usleep(100);
+    }
+
+    /* Check for timeout waiting for response */
+    if (status == 0xFF) {
+        return HAL_TIMEOUT;
+    }
+
+    /* Check data accepted response: bits [4:1] must be 0b0101 (0x05 after masking 0x1F) */
+    if ((status & 0x1F) != 0x05) {
+        return HAL_ERROR;
     }
 
     return HAL_OK;
