@@ -86,8 +86,11 @@ hal_status_t flipper_receive_message(flipper_message_t *message, uint32_t timeou
     uint16_t payload_length = ((uint16_t)header[1] << 8) | header[2];
 
     if (payload_length > 0 && payload_length <= FLIPPER_MSG_MAX_PAYLOAD) {
-        /* Read payload + checksum */
-        uint8_t payload_and_sum[FLIPPER_MSG_MAX_PAYLOAD + 1];
+        /* Read payload + checksum.
+         * Static buffer is safe here: this function is non-reentrant in the
+         * single-threaded embedded context (UART1 is accessed exclusively by
+         * the main loop) and avoids repeated stack pressure. */
+        static uint8_t payload_and_sum[FLIPPER_MSG_MAX_PAYLOAD + 1];
         status = uart_receive(UART_PORT_1, payload_and_sum, payload_length + 1, timeout_ms);
         if (status != HAL_OK) {
             return status;
@@ -276,8 +279,11 @@ hal_status_t flipper_receive_message(flipper_message_t *message, uint32_t timeou
     uint16_t payload_length = ((uint16_t)header[1] << 8) | header[2];
 
     if (payload_length > 0 && payload_length <= FLIPPER_MSG_MAX_PAYLOAD) {
-        /* Read payload + checksum */
-        uint8_t payload_and_sum[FLIPPER_MSG_MAX_PAYLOAD + 1];
+        /* Read payload + checksum.
+         * Static buffer is safe here: this function is non-reentrant in the
+         * single-threaded embedded context (UART1 is accessed exclusively by
+         * the main loop) and avoids repeated stack pressure. */
+        static uint8_t payload_and_sum[FLIPPER_MSG_MAX_PAYLOAD + 1];
         status = uart_receive(UART_PORT_1, payload_and_sum, payload_length + 1, timeout_ms);
         if (status != HAL_OK) {
             return status;

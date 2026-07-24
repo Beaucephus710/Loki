@@ -74,14 +74,14 @@ class LokiDisplay:
             else:
                 raw = img.tobytes()
             self.fb.write(raw)
-            self.fb.flush()
         except Exception:
             logger.exception("Error writing frame to framebuffer")
 
     def boot_animation(self):
+        img = Image.new("RGB", (self.width, self.height), (0, 0, 40))
+        draw = ImageDraw.Draw(img)
         for i in range(60):
-            img = Image.new("RGB", (self.width, self.height), (i * 4 % 255, 0, 40))
-            draw = ImageDraw.Draw(img)
+            draw.rectangle([0, 0, self.width, self.height], fill=(i * 4 % 255, 0, 40))
             draw.text((10, 10), "Loki booting...", fill=(255, 255, 255))
             draw.text((10, 40), f"Step {i}", fill=(200, 200, 200))
             self.draw_frame(img)
