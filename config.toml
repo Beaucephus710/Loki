@@ -8,6 +8,12 @@ regular_animation = true
 level_speed = 2
 ascii_mode = true
 
+[web_ui]
+# The editor is deliberately bound to localhost; do not expose it to a network.
+enabled = true
+host = "127.0.0.1"
+port = 8080
+
 
 ##############################################
 # PLUGIN: AI BRAIN
@@ -138,7 +144,7 @@ auto_handshake = false
 ##############################################
 [plugins.wpa_sec]
 enabled = true
-api_key = ""  # set your wpa-sec API key here
+# Set LOKI_WPA_SEC_API_KEY in the service environment, never in this file.
 auto_fetch = true
 auto_upload = true
 interval = 30

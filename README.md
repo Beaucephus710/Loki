@@ -107,6 +107,20 @@ make clean
 
 If your environment is missing the ARM cross-compiler, builds that depend on `arm-linux-gnueabihf-gcc` will fail until the toolchain is installed.
 
+## Local configuration UI
+
+When running `python3 main.py`, Loki serves a configuration editor at
+`http://127.0.0.1:8080`. It is intentionally restricted to localhost. Edit
+the values, save them, then restart Loki for the updated configuration to take
+effect. Configure the WPA-SEC plugin key outside the repository:
+
+```bash
+export LOKI_WPA_SEC_API_KEY="your-key"
+python3 main.py
+```
+
+Set `[web_ui].enabled = false` in `config.toml` to disable the editor.
+
 ## Raspberry Pi Zero W installation (step-by-step)
 
 Use this path if you want to run Loki directly on a Raspberry Pi Zero W.
