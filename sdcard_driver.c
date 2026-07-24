@@ -155,6 +155,7 @@ hal_status_t sdcard_read_sector(uint32_t sector, uint16_t count, uint8_t *buffer
         if (token == 0xFE) {
             break;
         }
+        usleep(100);
     }
 
     if (token != 0xFE) {
@@ -202,6 +203,7 @@ hal_status_t sdcard_write_sector(uint32_t sector, uint16_t count, const uint8_t 
     uint8_t status = 0xFF;
     for (int i = 0; i < SD_RESPONSE_TIMEOUT && status == 0xFF; i++) {
         sdcard_read_response(&status, 1);
+        usleep(100);
     }
 
     return HAL_OK;

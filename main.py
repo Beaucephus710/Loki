@@ -148,23 +148,10 @@ def main():
     logger.info("Discovered plugin modules: %s", list(modules.keys()))
 
     # Instantiate plugin objects with per-plugin config
-    plugin_configs = config.get("plugins", {})
-    plugins = {}
-    for name, module in modules.items():
-        plugin_class = getattr(module, "Plugin", None)
-        if not plugin_class:
-            continue
+    plugins = instantiate_plugins(modules, config)
 
-        # get the config for this plugin (empty dict if missing)
-        cfg = plugin_configs.get(name, {})
-        try:
-            instance = plugin_class(cfg)
-            plugins[name] = instance
-        except Exception:
-            logger.exception("Failed to instantiate plugin %s", name)
-
-        # Initialize display (safe)
-        display = init_display(config)
+    # Initialize display (safe)
+    display = init_display(config)
 
     # Call on_start for each plugin (safe)
     for name, plugin in plugins.items():
