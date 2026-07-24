@@ -7,6 +7,7 @@ config.toml so you can change growth speed and mood decay without touching code.
 from __future__ import annotations
 
 import json
+import os
 import time
 from pathlib import Path
 
@@ -90,8 +91,16 @@ class DragonConfig:
             mood.get("decay_mood_per_hour", _DEFAULT_DECAY["decay_mood_per_hour"])
         )
 
-        # Persistence settings
-        default_path = "~/.local/share/loki/dragon_state.json"
+        # Persistence settings.
+        # Respect XDG_DATA_HOME so the path works in service/rootless environments.
+        xdg_data = os.environ.get("XDG_DATA_HOME", "")
+        if xdg_data:
+            _default_base = Path(xdg_data)
+        elif os.environ.get("HOME"):
+            _default_base = Path.home() / ".local" / "share"
+        else:
+            _default_base = Path("/var/lib")
+        default_path = str(_default_base / "loki" / "dragon_state.json")
         self.state_path: Path = Path(cfg.get("state_path", default_path)).expanduser()
         self.persist: bool = bool(cfg.get("persist", True))
         self.enabled: bool = bool(cfg.get("enabled", True))

@@ -49,7 +49,12 @@ class DragonAnimator:
         self._font = ImageFont.load_default()
 
     def render(self, state: DragonState, frame: int = 0) -> Image.Image:
-        """Return one ``RGB`` Pillow image for the current dragon state."""
+        """Return one ``RGB`` Pillow image for the current dragon state.
+
+        :param state: Current dragon stats to visualise.
+        :param frame: Animation frame counter; increment each call to animate.
+        :return: A Pillow ``Image`` in ``"RGB"`` mode (3 bytes/pixel).
+        """
         img = Image.new("RGB", (self.width, self.height), self.background)
         draw = ImageDraw.Draw(img)
 

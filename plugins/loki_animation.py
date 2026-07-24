@@ -236,7 +236,10 @@ class LokiAnimationPlugin(Plugin):
 
                 if state is not None and self._animator is not None:
                     img = self._animator.render(state, frame)
-                    # Only write to the framebuffer when one is genuinely open
+                    # LokiDisplay.fb is None when the framebuffer could not be
+                    # opened (headless mode).  We use getattr() with a default
+                    # here because DisplayFallback (main.py) does not expose fb,
+                    # so the check is intentionally safe for both display types.
                     if self._display is not None and getattr(self._display, "fb", None) is not None:
                         self._display.draw_frame(img)
             except Exception:

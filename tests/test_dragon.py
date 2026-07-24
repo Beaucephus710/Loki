@@ -187,6 +187,23 @@ class TestDragonStateStages(unittest.TestCase):
             self.assertEqual(result["stage_before"], "egg")
             self.assertEqual(result["stage_after"], "hatchling")
 
+    def test_chained_interactions_accumulate_correctly(self):
+        """Multiple different interactions on the same state all contribute."""
+        cfg = DragonConfig({"xp": {"hatchling": 3, "juvenile": 8, "adult": 20}})
+        state = DragonState(last_updated=time.time())
+        state.configure(cfg)
+
+        # Apply all interaction types in sequence
+        kinds = ["care", "talk", "play", "feed", "rest"]
+        total_xp_expected = sum(cfg.xp_per_interaction[k] for k in kinds)
+        for kind in kinds:
+            state.interact(kind)
+
+        self.assertEqual(state.xp, total_xp_expected)
+        self.assertEqual(state.interactions, len(kinds))
+        # With 5+ XP and hatchling=3, we should have hatched
+        self.assertNotEqual(state.stage, "egg")
+
 
 # ---------------------------------------------------------------------------
 # DragonState: mood names

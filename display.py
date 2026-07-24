@@ -65,6 +65,11 @@ class LokiDisplay:
             # framebuffers on Raspberry Pi.  Set pixel_format = "RGB565" in
             # [plugins.display] to enable conversion.
             if self._pixel_format == "RGB565":
+                # Pillow's "BGR;16" raw encoder packs each pixel as a 16-bit
+                # little-endian word with B in the high 5 bits and R in the low 5.
+                # SPI TFT controllers (ILI9341, ST7789, etc.) address the colour
+                # channels in BGR order, so this swapped packing produces the
+                # correct on-screen colours.
                 raw = img.convert("RGB").tobytes("raw", "BGR;16")
             else:
                 raw = img.tobytes()

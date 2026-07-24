@@ -151,7 +151,8 @@ def main() -> None:
 
     # Optional animated GIF
     if args.gif:
-        frame_count = max(8, animator.fps * 2)  # at least 2 seconds
+        _GIF_DURATION_SECONDS = 2  # minimum GIF length in seconds
+        frame_count = max(8, animator.fps * _GIF_DURATION_SECONDS)
         frames = [animator.render(state, frame=f) for f in range(frame_count)]
         args.gif.parent.mkdir(parents=True, exist_ok=True)
         duration_ms = max(40, int(1000 / animator.fps))
