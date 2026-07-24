@@ -121,6 +121,13 @@ sudo systemctl restart systemd-networkd
 
 Set the computer's USB Ethernet interface to the static address
 `10.0.0.1/24`, connect to Loki over USB, and open `http://10.0.0.2:8080`.
+On Linux, this can be configured with:
+
+```bash
+sudo ip address replace 10.0.0.1/24 dev <usb-interface>
+sudo ip link set <usb-interface> up
+```
+
 The UI accepts connections only from that USB subnet. Edit values, save them,
 then restart Loki for the updated configuration to take effect. Configure the
 WPA-SEC plugin key outside the repository:

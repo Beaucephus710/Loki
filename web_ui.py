@@ -16,7 +16,7 @@ from urllib.parse import parse_qs
 
 try:
     import tomllib
-except ModuleNotFoundError:  # pragma: no cover - defer the Python 3.11 requirement to use
+except ModuleNotFoundError:  # pragma: no cover - _load reports the Python 3.11 requirement
     tomllib = None
 
 _SECRET_NAMES = {"api_key", "password", "secret", "token"}
@@ -141,7 +141,7 @@ class ConfigWebUI:
 <html><head><meta charset="utf-8"><title>Loki configuration</title>
 <style>body{{font-family:sans-serif;max-width:900px;margin:2rem auto}}table{{border-collapse:collapse;width:100%}}th,td{{padding:.5rem;border-bottom:1px solid #ddd;text-align:left}}input{{width:100%;box-sizing:border-box}}.notice{{color:#075}}</style>
 </head><body><h1>Loki configuration</h1>
-<p>Changes are saved to {html.escape(str(self.config_path))}. Restart Loki to apply them. Secrets are deliberately excluded; configure the WPA-SEC key with <code>LOKI_WPA_SEC_API_KEY</code>.</p>
+<p>Changes are saved to {html.escape(str(self.config_path))}. Fully restart Loki to apply them. Secrets are deliberately excluded; configure the WPA-SEC key with <code>LOKI_WPA_SEC_API_KEY</code>.</p>
 {notice}<form method="post"><input type="hidden" name="csrf_token" value="{self.csrf_token}"><table>{''.join(rows)}</table><p><button type="submit">Save configuration</button></p></form></body></html>"""
 
     def _handler(self):

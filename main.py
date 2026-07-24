@@ -24,7 +24,7 @@ logger = logging.getLogger("loki")
 PLUGINS_DIR = "plugins"
 MAIN_LOOP_SLEEP = 0.0167  # seconds (60 FPS = ~16.67ms per frame for responsive UI)
 
-def config_path():
+def get_config_path():
     return Path(os.environ.get("LOKI_CONFIG_PATH", str(Path(__file__).with_name("config.toml"))))
 
 def discover_plugins():
@@ -128,7 +128,7 @@ def init_display(config):
 
 def main():
     import toml
-    config_file = config_path()
+    config_file = get_config_path()
     config = toml.load(config_file)
     web_ui = None
     web_config = config.get("web_ui", {})
