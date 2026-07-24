@@ -109,17 +109,29 @@ If your environment is missing the ARM cross-compiler, builds that depend on `ar
 
 ## Local configuration UI
 
-When running `python3 main.py`, Loki serves a configuration editor at
-`http://127.0.0.1:8080`. It is intentionally restricted to localhost. Edit
-the values, save them, then restart Loki for the updated configuration to take
-effect. Configure the WPA-SEC plugin key outside the repository:
+Loki uses the same USB-network addresses as a typical Pwnagotchi setup:
+Loki is `10.0.0.2` and the connected computer is `10.0.0.1`. Install the
+included systemd-networkd profile on Loki once, then restart networking:
+
+```bash
+sudo install -D -m 644 network/loki-usb0.network /etc/systemd/network/10-loki-usb0.network
+sudo systemctl enable --now systemd-networkd
+sudo systemctl restart systemd-networkd
+```
+
+Set the computer's USB Ethernet interface to the static address
+`10.0.0.1/24`, connect to Loki over USB, and open `http://10.0.0.2:8080`.
+The UI accepts connections only from that USB subnet. Edit values, save them,
+then restart Loki for the updated configuration to take effect. Configure the
+WPA-SEC plugin key outside the repository:
 
 ```bash
 export LOKI_WPA_SEC_API_KEY="your-key"
 python3 main.py
 ```
 
-Set `[web_ui].enabled = false` in `config.toml` to disable the editor.
+Set `[web_ui].enabled = false` in `config.toml` to disable the editor. For a
+strictly local-only UI instead, set `[web_ui].host = "127.0.0.1"`.
 
 ## Raspberry Pi Zero W installation (step-by-step)
 

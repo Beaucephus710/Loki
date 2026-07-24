@@ -13,6 +13,10 @@ class TestConfigWebUI(unittest.TestCase):
         with self.assertRaises(ValueError):
             ConfigWebUI("config.toml", host="0.0.0.0")
 
+    def test_allows_pwnagotchi_style_usb_host(self):
+        ui = ConfigWebUI("config.toml", host="10.0.0.2")
+        self.assertEqual(str(ui.client_network), "10.0.0.0/24")
+
     def test_hides_secret_fields(self):
         fields = dict(
             _flatten_settings(

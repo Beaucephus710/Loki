@@ -9,9 +9,9 @@ level_speed = 2
 ascii_mode = true
 
 [web_ui]
-# The editor is deliberately bound to localhost; do not expose it to a network.
+# Pwnagotchi-style USB web access; Loki is 10.0.0.2 and the host is 10.0.0.1.
 enabled = true
-host = "127.0.0.1"
+host = "10.0.0.2"
 port = 8080
 
 

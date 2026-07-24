@@ -83,14 +83,17 @@ def _set_value(data: dict, path: tuple[str, ...], value) -> None:
 
 
 class ConfigWebUI:
-    """Serve a CSRF-protected configuration editor on a loopback address."""
+    """Serve a CSRF-protected editor on loopback or Loki's USB network."""
 
     def __init__(self, config_path: str | Path, host: str = "127.0.0.1", port: int = 8080):
-        if host != "127.0.0.1":
-            raise ValueError("web UI must bind to 127.0.0.1")
+        if host not in {"127.0.0.1", "10.0.0.2"}:
+            raise ValueError("web UI must bind to 127.0.0.1 or 10.0.0.2")
         self.config_path = Path(config_path)
         self.host = host
         self.port = port
+        self.client_network = ipaddress.ip_network(
+            "127.0.0.0/8" if host == "127.0.0.1" else "10.0.0.0/24"
+        )
         self.csrf_token = secrets.token_urlsafe(32)
         self.server: ThreadingHTTPServer | None = None
         self.thread: threading.Thread | None = None
@@ -139,11 +142,11 @@ class ConfigWebUI:
         ui = self
 
         class Handler(BaseHTTPRequestHandler):
-            def _is_loopback(self) -> bool:
-                return ipaddress.ip_address(self.client_address[0]).is_loopback
+            def _is_allowed_client(self) -> bool:
+                return ipaddress.ip_address(self.client_address[0]) in ui.client_network
 
             def do_GET(self):
-                if not self._is_loopback() or self.path != "/":
+                if not self._is_allowed_client() or self.path != "/":
                     self.send_error(HTTPStatus.NOT_FOUND)
                     return
                 self.send_response(HTTPStatus.OK)
@@ -152,7 +155,7 @@ class ConfigWebUI:
                 self.wfile.write(ui._page().encode())
 
             def do_POST(self):
-                if not self._is_loopback() or self.path != "/":
+                if not self._is_allowed_client() or self.path != "/":
                     self.send_error(HTTPStatus.NOT_FOUND)
                     return
                 length = int(self.headers.get("Content-Length", "0"))
