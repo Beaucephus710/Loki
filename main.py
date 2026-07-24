@@ -23,7 +23,7 @@ logger = logging.getLogger("loki")
 # Configurable values
 PLUGINS_DIR = "plugins"
 MAIN_LOOP_SLEEP = 0.0167  # seconds (60 FPS = ~16.67ms per frame for responsive UI)
-CONFIG_PATH = Path(os.environ.get("LOKI_CONFIG_PATH", Path(__file__).with_name("config.toml")))
+CONFIG_PATH = Path(os.environ.get("LOKI_CONFIG_PATH", str(Path(__file__).with_name("config.toml"))))
 
 def discover_plugins():
     """
