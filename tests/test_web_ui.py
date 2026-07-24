@@ -30,6 +30,8 @@ class TestConfigWebUI(unittest.TestCase):
         self.assertTrue(_parse_value("true", False))
         self.assertEqual(_parse_value("12", 1), 12)
         self.assertEqual(_parse_value("[1, 2]", []), [1, 2])
+        with self.assertRaises(ValueError):
+            _parse_value("'not a list'", [])
 
     def test_save_is_reparseable(self):
         with tempfile.TemporaryDirectory() as directory:

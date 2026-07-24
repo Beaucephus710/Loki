@@ -130,6 +130,15 @@ export LOKI_WPA_SEC_API_KEY="your-key"
 python3 main.py
 ```
 
+For a systemd-managed Loki process, persist the key in an override instead of
+adding it to `config.toml`:
+
+```bash
+sudo systemctl edit loki
+# Add: [Service]
+# Add: Environment=LOKI_WPA_SEC_API_KEY=your-key
+```
+
 Set `[web_ui].enabled = false` in `config.toml` to disable the editor. For a
 strictly local-only UI instead, set `[web_ui].host = "127.0.0.1"`.
 

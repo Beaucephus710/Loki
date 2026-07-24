@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import html
 import ipaddress
 import os
@@ -42,7 +43,10 @@ def _parse_value(value: str, current):
     if isinstance(current, float):
         return float(value)
     if isinstance(current, list):
-        return tomllib.loads("value = " + value)["value"]
+        parsed = ast.literal_eval(value)
+        if not isinstance(parsed, list):
+            raise ValueError("expected a list")
+        return parsed
     return value
 
 
@@ -109,11 +113,13 @@ class ConfigWebUI:
             dir=self.config_path.parent, prefix=f".{self.config_path.name}.", suffix=".tmp"
         )
         try:
+            os.fchmod(fd, 0o600)
             with os.fdopen(fd, "w", encoding="utf-8") as temporary:
                 temporary.write(_dump_toml(data))
             os.replace(temporary_path, self.config_path)
         except Exception:
-            os.unlink(temporary_path)
+            if os.path.exists(temporary_path):
+                os.unlink(temporary_path)
             raise
 
     def _page(self, message: str = "") -> str:
@@ -180,7 +186,7 @@ class ConfigWebUI:
                 self.send_header("Location", "/")
                 self.end_headers()
 
-            def log_message(self, format, *args):
+            def log_message(self, msg_format, *args):
                 return
 
         return Handler
