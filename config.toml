@@ -1,192 +1,357 @@
 ##############################################
-# LOKI GLOBAL SETTINGS
+#                                            #
+#         LOKI — MAIN CONFIGURATION         #
+#                                            #
+#  Edit values here; no code changes needed  #
+#  Restart Loki after saving this file.      #
+#  Secrets (API keys) must be set via env    #
+#  variables — never hard-code them here.    #
+#                                            #
 ##############################################
 
+
+##############################################
+# GLOBAL SETTINGS
+##############################################
+
+# Enable ANSI colour output in the terminal log
 color = false
+
+# Play the boot splash animation on startup
 boot_animation = true
+
+# Run idle / ambient animations during normal operation
 regular_animation = true
+
+# Animation playback speed multiplier (1 = slowest, higher = faster)
 level_speed = 2
+
+# Render in ASCII art mode instead of pixel graphics
 ascii_mode = true
 
+
+##############################################
+# WEB UI  (Pwnagotchi-style USB web access)
+# Loki is 10.0.0.2 — the host machine is 10.0.0.1
+##############################################
+
 [web_ui]
-# Pwnagotchi-style USB web access; Loki is 10.0.0.2 and the host is 10.0.0.1.
 enabled = true
-host = "10.0.0.2"
-port = 8080
+host    = "10.0.0.2"
+port    = 8080
+
+
+##############################################
+# DISPLAY
+# Top-level display block consumed by the
+# core display module (config.display()).
+# Keep in sync with [plugins.display] below.
+##############################################
+
+[display]
+# Framebuffer device (e.g. /dev/fb0 for HDMI, /dev/fb1 for SPI TFT)
+device       = "/dev/fb1"
+
+# Framebuffer driver backend: "fb" (Linux framebuffer) or "pygame"
+driver       = "fb"
+
+# Physical pixel dimensions — must match your screen
+width        = 480
+height       = 320
+
+# Pixel colour format: "RGB" (24-bit) or "RGB565" (16-bit, most SPI TFTs)
+pixel_format = "RGB565"
+
+# Animation preset name to use for display-level animations
+animation    = "default"
+
+# Invert display colours
+invert       = false
+
+# Backlight / contrast level (0–100)
+contrast     = 50
+
+
+##############################################
+# DEPLOYMENT / SSH
+# Used by Makefile and build scripts when
+# pushing a compiled binary to the target
+# device over SSH/SCP.
+##############################################
+
+[deploy]
+# SSH username on the target device
+user = "pi"
+
+# Hostname or IP address of the target device
+host = "orange-pi.local"
+
+# Remote path where the binary is uploaded
+path = "/tmp"
+
+# SSH port (default 22)
+port = 22
+
+
+##############################################
+# LOGGING
+##############################################
+
+[logging]
+# Log level: 1=CRITICAL  2=ERROR  3=WARN  4=INFO  5=DEBUG
+level = 4
+
+# Write log output to this file (leave blank to log to stdout only)
+file = ""
 
 
 ##############################################
 # PLUGIN: AI BRAIN
 ##############################################
+
 [plugins.ai_brain]
-enabled = true
+enabled    = true
+
+# Set to true to call the OpenAI API instead of a local model
 use_openai = false
-model = "gpt-4o-mini"
+
+# Model identifier (OpenAI model name or local model path)
+model      = "gpt-4o-mini"
+
+# Automatically reply to incoming messages without user input
 auto_reply = false
-learning = false
-debug = false
+
+# Enable on-device learning / fine-tuning loop
+learning   = false
+
+# Verbose debug output for the AI brain plugin
+debug      = false
 
 
 ##############################################
 # PLUGIN: SCAN
 ##############################################
+
 [plugins.scan]
-enabled = true
-wifi = false
-ble = false
+enabled  = true
+wifi     = false
+ble      = false
 ethernet = true
+
+# How often to run a scan cycle, in seconds
 interval = 5
 
 
 ##############################################
 # PLUGIN: SNIFF
 ##############################################
+
 [plugins.sniff]
-enabled = true
-interface = "wlan0"
-channel_hop = true
+enabled      = true
+
+# Wireless interface to put into monitor mode
+interface    = "wlan0"
+
+# Hop across channels instead of staying on one
+channel_hop  = true
+
+# Seconds between channel hops
 hop_interval = 3
 
 
 ##############################################
 # PLUGIN: DISPLAY
+# Plugin-level display settings; values here
+# are overridden by the top-level [display]
+# section when both are present.
 ##############################################
+
 [plugins.display]
-enabled = true
-driver = "fb"
-device = "/dev/fb1"
-invert = false
-contrast = 50
+enabled      = true
+driver       = "fb"
+device       = "/dev/fb1"
+width        = 480
+height       = 320
+pixel_format = "RGB565"
+invert       = false
+contrast     = 50
 
 
 ##############################################
 # PLUGIN: LOKI ANIMATION
 ##############################################
+
 [plugins.loki_animation]
 enabled = true
-speed = 2
-style = "default"
+
+# Playback speed (frames per second multiplier)
+speed   = 2
+
+# Visual style preset: "default" is the only built-in style
+style   = "default"
 
 
 ##############################################
 # PLUGIN: BETTERCAP
 ##############################################
+
 [plugins.bettercap]
-enabled = false
-path = "/usr/local/bin/bettercap"
+enabled    = false
+
+# Full path to the bettercap binary
+path       = "/usr/local/bin/bettercap"
+
+# Start bettercap automatically when this plugin loads
 auto_start = false
+
+# Bettercap REST API address (used by AI brain and other plugins)
+host       = "127.0.0.1"
+port       = 8081
 
 
 ##############################################
 # PLUGIN: GPS
 ##############################################
+
 [plugins.gps]
 enabled = false
-device = "/dev/ttyUSB0"
-baud = 9600
+device  = "/dev/ttyUSB0"
+baud    = 9600
 
 
 ##############################################
 # PLUGIN: BLE
 ##############################################
+
 [plugins.ble]
-enabled = false
-scan = false
+enabled  = false
+scan     = false
+
+# Seconds between BLE scan cycles
 interval = 10
 
 
 ##############################################
-# PLUGIN: UPS
+# PLUGIN: UPS / BATTERY
 ##############################################
+
 [plugins.ups]
-enabled = false
-battery_min = 20
+enabled         = false
+
+# Minimum battery percentage before shutdown warning
+battery_min     = 20
+
+# Gracefully shut down the system when battery falls below battery_min
 shutdown_on_low = true
 
 
 ##############################################
 # PLUGIN: TOUCH
 ##############################################
+
 [plugins.touch]
 enabled = false
-device = "/dev/input/event0"
+
+# Linux input event device for the touchscreen (XPT2046 or similar)
+device  = "/dev/input/event0"
 
 
 ##############################################
 # PLUGIN: WIFI TOOLS
 ##############################################
+
 [plugins.wifi_tools]
-enabled = false
+enabled     = false
 auto_deauth = false
-auto_probe = false
+auto_probe  = false
 
 
 ##############################################
 # PLUGIN: PWNY
 ##############################################
+
 [plugins.pwny]
-enabled = false
+enabled     = false
 auto_attack = false
-aggressive = false
+aggressive  = false
 
 
 ##############################################
 # PLUGIN: PWNAGOTCHI
 ##############################################
+
 [plugins.pwnagotchi]
-enabled = false
-personality = "default"
+enabled        = false
+personality    = "default"
 auto_handshake = false
 
 
 ##############################################
 # PLUGIN: WPA-SEC HANDSHAKE FETCHER
+#
+# API KEY — do NOT put it here.
+# Set the environment variable instead:
+#   export LOKI_WPA_SEC_API_KEY="your-key"
+# Or in the systemd unit file:
+#   Environment=LOKI_WPA_SEC_API_KEY=your-key
 ##############################################
+
 [plugins.wpa_sec]
-enabled = true
-# The legacy api_key setting is ignored; set LOKI_WPA_SEC_API_KEY in the service environment.
-auto_fetch = true
+enabled     = true
+auto_fetch  = true
 auto_upload = true
-interval = 30
+
+# Seconds between upload/fetch cycles
+interval    = 30
 
 
 ##############################################
 # PLUGIN: WIGLE WIFI MAPPING
+#
+# Credentials — set via environment variables:
+#   LOKI_WIGLE_API_KEY  /  LOKI_WIGLE_USERNAME  /  LOKI_WIGLE_PASSWORD
 ##############################################
+
 [plugins.wigle]
-enabled = false
-api_key = ""
+enabled  = false
+api_key  = ""
 username = ""
 password = ""
 
 
 ##############################################
 # PLUGIN: ONLINEHASHCRACK
+#
+# API key — set via LOKI_ONLINEHASH_API_KEY env var
 ##############################################
+
 [plugins.onlinehash]
-enabled = false
-api_key = ""
+enabled     = false
+api_key     = ""
 auto_upload = false
 
 
 ##############################################
-# DRAGON GROWTH AND ANIMATION
-# Change these values to alter how fast Loki
-# grows, how moods shift, and how animation
-# looks — no code changes needed.
+# DRAGON — GROWTH, MOOD & ANIMATION
+#
+# Tweak these numbers to change how fast Loki
+# grows and how moods shift — no code edits needed.
 ##############################################
 
 [dragon]
-# Set to false to disable the dragon system entirely
-enabled = true
-# Path to the persisted dragon state JSON (~ is expanded)
-state_path = "~/.local/share/loki/dragon_state.json"
-# Set to false to disable persistence (useful for testing/demo)
-persist = true
+# Disable the dragon system entirely by setting this to false
+enabled    = true
 
+# Path to the persisted dragon-state JSON (~ is expanded at runtime)
+state_path = "~/.local/share/loki/dragon_state.json"
+
+# Set to false to skip loading/saving state (handy for demos)
+persist    = true
+
+# ── XP thresholds ─────────────────────────────────────────────────────────────
 [dragon.xp]
-# XP required to reach each life stage (egg starts at 0)
-# Increase these numbers to slow growth; decrease to speed it up
+# XP required to reach each life stage (egg always starts at 0)
+# Raise to slow growth, lower to speed it up
 hatchling = 5
 juvenile  = 25
 adult     = 75
@@ -198,9 +363,9 @@ play = 2
 feed = 1
 rest = 1
 
+# ── Mood ──────────────────────────────────────────────────────────────────────
 [dragon.mood]
-# Mood score (0–100) boundaries for named mood states
-# Scores at or above each threshold use that label
+# Mood score boundaries (0–100).  At or above each value → that mood label.
 happy   = 80
 content = 55
 sleepy  = 30
@@ -213,22 +378,26 @@ play = 6
 feed = 4
 rest = 2
 
-# Idle decay: how quickly needs fall when Loki is left alone
-# Decay begins after this many hours of inactivity
-decay_after_hours      = 0.25
+# Idle decay — how quickly needs drop when Loki is left alone
+decay_after_hours      = 0.25   # inactivity hours before decay starts
 decay_hunger_per_hour  = 4
 decay_energy_per_hour  = 3
 decay_mood_per_hour    = 2
 
+# ── Animation ─────────────────────────────────────────────────────────────────
 [dragon.animation]
-# Set to false to disable rendering even if the plugin is enabled
+# Set to false to disable rendering even when the plugin is enabled
 enabled    = true
-# Frame dimensions in pixels — should match the display resolution
+
+# Frame dimensions in pixels — must match your display resolution
 width      = 480
 height     = 320
+
 # Target frames per second for the render loop
 fps        = 10
-# Background colour as [R, G, B]
+
+# Background fill colour as [R, G, B]
 background = [12, 18, 38]
+
 # Visual style: "default" is the only built-in style
 style      = "default"
