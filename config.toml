@@ -8,6 +8,12 @@ regular_animation = true
 level_speed = 2
 ascii_mode = true
 
+[web_ui]
+# Pwnagotchi-style USB web access; Loki is 10.0.0.2 and the host is 10.0.0.1.
+enabled = true
+host = "10.0.0.2"
+port = 8080
+
 
 ##############################################
 # PLUGIN: AI BRAIN
@@ -138,7 +144,7 @@ auto_handshake = false
 ##############################################
 [plugins.wpa_sec]
 enabled = true
-api_key = "f0216eff13239c545958864edf66153c"
+# The legacy api_key setting is ignored; set LOKI_WPA_SEC_API_KEY in the service environment.
 auto_fetch = true
 auto_upload = true
 interval = 30
@@ -161,3 +167,68 @@ password = ""
 enabled = false
 api_key = ""
 auto_upload = false
+
+
+##############################################
+# DRAGON GROWTH AND ANIMATION
+# Change these values to alter how fast Loki
+# grows, how moods shift, and how animation
+# looks — no code changes needed.
+##############################################
+
+[dragon]
+# Set to false to disable the dragon system entirely
+enabled = true
+# Path to the persisted dragon state JSON (~ is expanded)
+state_path = "~/.local/share/loki/dragon_state.json"
+# Set to false to disable persistence (useful for testing/demo)
+persist = true
+
+[dragon.xp]
+# XP required to reach each life stage (egg starts at 0)
+# Increase these numbers to slow growth; decrease to speed it up
+hatchling = 5
+juvenile  = 25
+adult     = 75
+
+# XP awarded per interaction type
+care = 2
+talk = 1
+play = 2
+feed = 1
+rest = 1
+
+[dragon.mood]
+# Mood score (0–100) boundaries for named mood states
+# Scores at or above each threshold use that label
+happy   = 80
+content = 55
+sleepy  = 30
+# Below the sleepy threshold Loki is "grumpy"
+
+# Mood points added per interaction type
+care = 5
+talk = 3
+play = 6
+feed = 4
+rest = 2
+
+# Idle decay: how quickly needs fall when Loki is left alone
+# Decay begins after this many hours of inactivity
+decay_after_hours      = 0.25
+decay_hunger_per_hour  = 4
+decay_energy_per_hour  = 3
+decay_mood_per_hour    = 2
+
+[dragon.animation]
+# Set to false to disable rendering even if the plugin is enabled
+enabled    = true
+# Frame dimensions in pixels — should match the display resolution
+width      = 480
+height     = 320
+# Target frames per second for the render loop
+fps        = 10
+# Background colour as [R, G, B]
+background = [12, 18, 38]
+# Visual style: "default" is the only built-in style
+style      = "default"

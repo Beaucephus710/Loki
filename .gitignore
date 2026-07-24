@@ -6,3 +6,10 @@ venv/
 *.bak
 .vscode/
 .idea/
+
+# Dragon system — generated/persistent files (not for version control)
+dragon_state.json
+*.tmp
+loki_preview.png
+loki.gif
+*.gif

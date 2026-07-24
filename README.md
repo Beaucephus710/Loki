@@ -107,6 +107,48 @@ make clean
 
 If your environment is missing the ARM cross-compiler, builds that depend on `arm-linux-gnueabihf-gcc` will fail until the toolchain is installed.
 
+## Local configuration UI
+
+Loki uses the same USB-network addresses as a typical Pwnagotchi setup:
+Loki is `10.0.0.2` and the connected computer is `10.0.0.1`. Install the
+included systemd-networkd profile on Loki once, then restart networking:
+
+```bash
+sudo install -D -m 644 network/loki-usb0.network /etc/systemd/network/10-loki-usb0.network
+sudo systemctl enable --now systemd-networkd
+sudo systemctl restart systemd-networkd
+```
+
+Set the computer's USB Ethernet interface to the static address
+`10.0.0.1/24`, connect to Loki over USB, and open `http://10.0.0.2:8080`.
+On Linux, this can be configured with:
+
+```bash
+sudo ip address replace 10.0.0.1/24 dev <usb-interface>
+sudo ip link set <usb-interface> up
+```
+
+The UI accepts connections only from that USB subnet. Edit values, save them,
+then restart Loki for the updated configuration to take effect. Configure the
+WPA-SEC plugin key outside the repository:
+
+```bash
+export LOKI_WPA_SEC_API_KEY="your-key"
+python3 main.py
+```
+
+For a systemd-managed Loki process, persist the key in an override instead of
+adding it to `config.toml`:
+
+```bash
+sudo systemctl edit loki
+# Add: [Service]
+# Add: Environment=LOKI_WPA_SEC_API_KEY=your-key
+```
+
+Set `[web_ui].enabled = false` in `config.toml` to disable the editor. For a
+strictly local-only UI instead, set `[web_ui].host = "127.0.0.1"`.
+
 ## Raspberry Pi Zero W installation (step-by-step)
 
 Use this path if you want to run Loki directly on a Raspberry Pi Zero W.

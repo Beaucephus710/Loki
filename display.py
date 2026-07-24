@@ -28,6 +28,7 @@ class LokiDisplay:
             self.animation = existing.animation
             self.fb_dev = existing.fb_dev
             self.fb = existing.fb
+            self._pixel_format = existing._pixel_format
             return
 
         # Normal initialization (first instance)
@@ -39,6 +40,11 @@ class LokiDisplay:
         self.height = disp_cfg.get("height", 320)
         self.animation = disp_cfg.get("animation", "boot_sequence")
         self.fb_dev = disp_cfg.get("device", "/dev/fb1") if isinstance(disp_cfg, dict) else "/dev/fb1"
+        # Pixel format for framebuffer writes.
+        # "RGB"    — 3 bytes/pixel, raw RGB888 (Pillow default, good for most compositing).
+        # "RGB565" — 2 bytes/pixel, packed 16-bit; required by most SPI TFT displays on Pi.
+        # Set pixel_format = "RGB565" in [plugins.display] for physical Pi TFT hardware.
+        self._pixel_format: str = disp_cfg.get("pixel_format", "RGB") if isinstance(disp_cfg, dict) else "RGB"
 
         try:
             self.fb = open(self.fb_dev, "wb", buffering=0)
@@ -54,7 +60,20 @@ class LokiDisplay:
         if not self.fb:
             return
         try:
-            self.fb.write(img.tobytes())
+            # Convert to the configured pixel format before writing.
+            # RGB565 is 2 bytes/pixel (16-bit packed); required by most SPI TFT
+            # framebuffers on Raspberry Pi.  Set pixel_format = "RGB565" in
+            # [plugins.display] to enable conversion.
+            if self._pixel_format == "RGB565":
+                # Pillow's "BGR;16" raw encoder packs each pixel as a 16-bit
+                # little-endian word with B in the high 5 bits and R in the low 5.
+                # SPI TFT controllers (ILI9341, ST7789, etc.) address the colour
+                # channels in BGR order, so this swapped packing produces the
+                # correct on-screen colours.
+                raw = img.convert("RGB").tobytes("raw", "BGR;16")
+            else:
+                raw = img.tobytes()
+            self.fb.write(raw)
             self.fb.flush()
         except Exception:
             logger.exception("Error writing frame to framebuffer")

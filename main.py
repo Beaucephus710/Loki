@@ -14,6 +14,7 @@ import time
 import traceback
 import os
 from pathlib import Path
+from web_ui import ConfigWebUI
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -22,6 +23,9 @@ logger = logging.getLogger("loki")
 # Configurable values
 PLUGINS_DIR = "plugins"
 MAIN_LOOP_SLEEP = 0.0167  # seconds (60 FPS = ~16.67ms per frame for responsive UI)
+
+def get_config_path():
+    return Path(os.environ.get("LOKI_CONFIG_PATH", str(Path(__file__).with_name("config.toml"))))
 
 def discover_plugins():
     """
@@ -123,9 +127,22 @@ def init_display(config):
         return DisplayFallback()
 
 def main():
-    # Minimal config placeholder; replace with your real config loader if present
     import toml
-    config = toml.load("/home/loki/Loki/config.toml")
+    config_file = get_config_path()
+    config = toml.load(config_file)
+    web_ui = None
+    web_config = config.get("web_ui", {})
+    if web_config.get("enabled", False):
+        try:
+            web_ui = ConfigWebUI(
+                config_file,
+                host=web_config.get("host", "127.0.0.1"),
+                port=web_config.get("port", 8080),
+            )
+            web_ui.start()
+            logger.info("Configuration UI available at http://%s:%s", web_ui.host, web_ui.port)
+        except (OSError, ValueError):
+            logger.exception("Could not start local configuration UI")
     # Discover and import plugin modules
     modules = discover_plugins()
     logger.info("Discovered plugin modules: %s", list(modules.keys()))
@@ -191,6 +208,8 @@ def main():
                 display.close()
         except Exception:
             logger.debug("Error closing display: %s", traceback.format_exc())
+        if web_ui:
+            web_ui.stop()
         logger.info("Shutdown complete")
 
 if __name__ == "__main__":
