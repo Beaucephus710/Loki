@@ -122,9 +122,11 @@ class ConfigWebUI:
                 os.unlink(temporary_path)
             raise
 
-    def _page(self, message: str = "") -> str:
+    def _page(self, message: str = "", data: dict | None = None) -> str:
+        if data is None:
+            data = self._load()
         rows = []
-        for path, value in _flatten_settings(self._load()):
+        for path, value in _flatten_settings(data):
             field = ".".join(path)
             escaped_field = html.escape(field, quote=True)
             if isinstance(value, bool):
@@ -180,7 +182,7 @@ class ConfigWebUI:
                     self.send_response(HTTPStatus.BAD_REQUEST)
                     self.send_header("Content-Type", "text/html; charset=utf-8")
                     self.end_headers()
-                    self.wfile.write(ui._page(f"Configuration was not saved: {error}").encode())
+                    self.wfile.write(ui._page(f"Configuration was not saved: {error}", data=data).encode())
                     return
                 self.send_response(HTTPStatus.SEE_OTHER)
                 self.send_header("Location", "/")
