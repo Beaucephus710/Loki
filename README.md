@@ -105,7 +105,21 @@ make docs
 make clean
 ```
 
-If your environment is missing the ARM cross-compiler, builds that depend on `arm-linux-gnueabihf-gcc` will fail until the toolchain is installed.
+The maintained native target is `loki_core.so`, a small shared library used by
+`loki.py`. The interactive application is Python-based. Use Python 3.11 or
+newer, then install the display dependency before starting the application:
+
+```bash
+python3 -m pip install -r requirements.txt
+python3 main.py
+```
+
+On Debian-based SBC images, `sudo apt install python3-pil` is an equivalent
+system-package installation for the display renderer. Without Pillow, Loki
+still starts its configuration UI and non-display plugins, but display and
+dragon animation rendering fall back safely.
+
+Use `make test` to run the Python test suite.
 
 ## Local configuration UI
 

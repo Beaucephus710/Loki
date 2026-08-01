@@ -1,0 +1,2 @@
+# Required for the framebuffer display and dragon animation renderer.
+Pillow>=9.2

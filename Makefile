@@ -4,18 +4,22 @@
 # - Linux/Mac: Use this Makefile directly with `make` command
 # - Windows: Use build.bat or build.ps1 script instead
 #
-# Requires: arm-linux-gnueabihf-gcc cross-compiler
-# Install on Ubuntu/Debian: sudo apt-get install gcc-arm-linux-gnueabihf
+# Requires: a C compiler (gcc or arm-linux-gnueabihf-gcc)
 
 ## Compiler Settings
 CC := $(shell command -v arm-linux-gnueabihf-gcc 2>/dev/null)
 ifeq ($(CC),)
 CC := gcc
 endif
-CFLAGS := -Wall -Wextra -I.
+CFLAGS := -Wall -Wextra -Icore
 ifeq ($(notdir $(CC)),arm-linux-gnueabihf-gcc)
 	CFLAGS += -march=armv7-a -mtune=cortex-a7
 endif
+
+# GNU Make on Windows is typically provided by Git for Windows, which includes
+# this shell; it also exists on the supported Linux SBC environments.
+SHELL := /usr/bin/bash
+MKDIR = mkdir -p $(1)
  
 ## Debug/Release Build Modes
 DEBUG ?= 1
@@ -34,28 +38,28 @@ CROSS_USER ?= pi
 CROSS_HOST ?= orange-pi.local
 CROSS_PATH ?= /tmp
  
-## Project Structure
-SOURCES := $(wildcard *.c)
-HEADERS := $(wildcard *.h)
-OBJECTS := $(addprefix $(BUILD_DIR)/, $(SOURCES:.c=.o))
+## Maintained native core
+# The Python runtime accesses this shared library through loki.py. Root-level
+# C files are legacy prototypes and are intentionally excluded.
+SOURCES := $(wildcard core/*.c)
+OBJECTS := $(patsubst core/%.c,$(BUILD_DIR)/core/%.o,$(SOURCES))
 DEPS := $(OBJECTS:.o=.d)
-TARGET := loki_app
+TARGET := loki_core.so
  
 ## Linker Settings
-LDFLAGS := -lm -lpthread
+LDFLAGS := -shared -lm -lpthread
  
 ## Build Rules
 all: $(BUILD_DIR)/$(TARGET)
  
 $(BUILD_DIR)/$(TARGET): $(OBJECTS)
-	@mkdir -p $(BUILD_DIR)
+	@$(call MKDIR,$(BUILD_DIR)); true
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 	@echo "[✓] Successfully built $(TARGET) ($(BUILD_DIR))"
-	@echo "[✓] Binary size: $$(ls -lh $@ | awk '{print $$5}')"
  
-$(BUILD_DIR)/%.o: %.c
-	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) -MMD -MP -c $< -o $@
+$(BUILD_DIR)/core/%.o: core/%.c
+	@$(call MKDIR,$(dir $@)); true
+	$(CC) $(CFLAGS) -fPIC -MMD -MP -c $< -o $@
 	@echo "[CC] $<"
  
 ## Include dependencies
@@ -65,18 +69,15 @@ $(BUILD_DIR)/%.o: %.c
 install: $(BUILD_DIR)/$(TARGET)
 	@echo "[→] Uploading to $(CROSS_USER)@$(CROSS_HOST):$(CROSS_PATH)..."
 	scp $(BUILD_DIR)/$(TARGET) $(CROSS_USER)@$(CROSS_HOST):$(CROSS_PATH)/
-	ssh $(CROSS_USER)@$(CROSS_HOST) 'chmod +x $(CROSS_PATH)/$(TARGET)'
 	@echo "[✓] Installation complete"
  
 ## Run on target
-run: install
-	@echo "[→] Executing on target..."
-	ssh $(CROSS_USER)@$(CROSS_HOST) 'sudo $(CROSS_PATH)/$(TARGET)'
+run:
+	python3 main.py
  
 ## Local testing (without hardware)
-test: clean
-	$(MAKE) DEBUG=1 CFLAGS="$(CFLAGS) -DMOCK_HARDWARE"
-	./build/debug/$(TARGET)
+test:
+	python3 -m unittest discover -s tests
  
 ## Documentation generation (requires Doxygen)
 docs:

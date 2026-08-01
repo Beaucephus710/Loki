@@ -1,4 +1,3 @@
-import display
 #!/usr/bin/env python3
 """
 Robust main loop for Loki:
@@ -109,11 +108,14 @@ def init_display(config):
     """
     Try to open framebuffer device from config or default. On failure, return fallback.
     """
-    fb_dev = config.get("display_device", "/dev/fb1") if config else "/dev/fb1"
+    display_config = config.get("display", {}) if isinstance(config, dict) else {}
+    fb_dev = display_config.get("device", "/dev/fb1")
     try:
-        # Try to open in binary write mode with buffering disabled
-        from display import init_display
-        _display = display.init_display(config)
+        # Import lazily so the configuration UI and non-display plugins still
+        # work on headless installations where Pillow is not installed.
+        from display import init_display as create_display
+
+        _display = create_display(config)
         fb = _display.fb
 
         logger.info("Opened framebuffer device %s", fb_dev)
@@ -129,9 +131,11 @@ def init_display(config):
         return DisplayFallback()
 
 def main():
-    import toml
+    import tomllib
+
     config_file = get_config_path()
-    config = toml.load(config_file)
+    with config_file.open("rb") as config_stream:
+        config = tomllib.load(config_stream)
     web_ui = None
     web_config = config.get("web_ui", {})
     if web_config.get("enabled", False):

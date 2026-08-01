@@ -33,7 +33,13 @@ class LokiDisplay:
 
         # Normal initialization (first instance)
         try:
-            disp_cfg = config.display() if hasattr(config, "display") else {}
+            if isinstance(config, dict):
+                # The main runtime passes the parsed TOML mapping directly.
+                # Prefer the canonical top-level display section, with the
+                # legacy plugin section as a compatibility fallback.
+                disp_cfg = config.get("display") or config.get("plugins", {}).get("display", {})
+            else:
+                disp_cfg = config.display() if hasattr(config, "display") else {}
         except Exception:
             disp_cfg = {}
         self.width = disp_cfg.get("width", 480)
