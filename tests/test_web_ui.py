@@ -61,6 +61,30 @@ class TestConfigWebUI(unittest.TestCase):
 
         request.send_error.assert_called_once_with(HTTPStatus.FORBIDDEN)
 
+    def test_post_valid_csrf_updates_config_without_roundtrip(self):
+        ui = ConfigWebUI("config.toml")
+        handler = ui._handler()
+        form_body = f"csrf_token={ui.csrf_token}&enabled=false".encode("utf-8")
+        request = type("Request", (), {})()
+        request.path = "/"
+        request.headers = {"Content-Length": str(len(form_body))}
+        request.rfile = io.BytesIO(form_body)
+        request._is_allowed_client = lambda: True
+        request.send_response = mock.Mock()
+        request.send_header = mock.Mock()
+        request.end_headers = mock.Mock()
+        request.send_error = mock.Mock()
+
+        with mock.patch.object(ui, "_load", return_value={"enabled": True}):
+            with mock.patch.object(ui, "_save") as save_mock:
+                handler.do_POST(request)
+
+        request.send_error.assert_not_called()
+        request.send_response.assert_called_once_with(HTTPStatus.SEE_OTHER)
+        request.send_header.assert_called_once_with("Location", "/")
+        request.end_headers.assert_called_once()
+        save_mock.assert_called_once_with({"enabled": False})
+
     def test_save_is_reparseable(self):
         with tempfile.TemporaryDirectory() as directory:
             config_path = Path(directory) / "config.toml"
