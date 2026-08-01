@@ -1,7 +1,10 @@
 """Tests for the local configuration web UI helpers."""
 
+import io
 import tempfile
 import unittest
+from http import HTTPStatus
+from unittest import mock
 from urllib.request import urlopen
 from pathlib import Path
 
@@ -29,9 +32,34 @@ class TestConfigWebUI(unittest.TestCase):
     def test_parses_existing_value_types(self):
         self.assertTrue(_parse_value("true", False))
         self.assertEqual(_parse_value("12", 1), 12)
+        self.assertEqual(_parse_value("12.5", 1.0), 12.5)
+        self.assertEqual(_parse_value("updated", "current"), "updated")
         self.assertEqual(_parse_value("[1, 2]", []), [1, 2])
         with self.assertRaises(ValueError):
+            _parse_value("12abc", 1)
+        with self.assertRaises(ValueError):
+            _parse_value("12abc", 1.0)
+        with self.assertRaises(ValueError):
             _parse_value("'not a list'", [])
+
+    def test_post_rejects_invalid_csrf_without_roundtrip(self):
+        ui = ConfigWebUI("config.toml")
+        handler = ui._handler()
+        form_body = b"csrf_token=invalid&enabled=false"
+        request = type("Request", (), {})()
+        request.path = "/"
+        request.headers = {"Content-Length": str(len(form_body))}
+        request.rfile = io.BytesIO(form_body)
+        request._is_allowed_client = lambda: True
+        request.send_error = mock.Mock()
+
+        with mock.patch.object(ui, "_load", side_effect=AssertionError("_load should not be called")):
+            with mock.patch.object(
+                ui, "_save", side_effect=AssertionError("_save should not be called")
+            ):
+                handler.do_POST(request)
+
+        request.send_error.assert_called_once_with(HTTPStatus.FORBIDDEN)
 
     def test_save_is_reparseable(self):
         with tempfile.TemporaryDirectory() as directory:

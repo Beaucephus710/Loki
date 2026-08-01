@@ -70,6 +70,8 @@ def instantiate_plugins(modules, config=None):
         if not plugin_class:
             continue
         cfg = plugin_configs.get(name, {})
+        if name == "loki_animation":
+            cfg = {"plugin": cfg, "dragon": (config or {}).get("dragon", {})}
         try:
             instances[name] = plugin_class(cfg)
         except Exception:

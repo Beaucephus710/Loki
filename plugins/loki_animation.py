@@ -20,7 +20,6 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from pathlib import Path
 
 logger = logging.getLogger("loki.dragon")
 
@@ -45,17 +44,33 @@ except Exception:
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-def _load_dragon_config() -> dict:
-    """Load the ``[dragon]`` section from config.toml.  Returns ``{}`` on
-    any error so the plugin always starts gracefully."""
-    try:
-        import toml
-        cfg_path = Path(__file__).resolve().parent.parent / "config.toml"
-        data = toml.load(cfg_path)
-        return data.get("dragon", {})
-    except Exception as exc:
-        logger.debug("Could not load dragon config: %s", exc)
+def _resolve_dragon_config(config) -> dict:
+    """Resolve dragon config from the already parsed plugin config payload."""
+    if not isinstance(config, dict):
         return {}
+
+    dragon_cfg = dict(config.get("dragon", {}) or {})
+    plugin_cfg = config.get("plugin")
+    if not isinstance(plugin_cfg, dict):
+        plugin_cfg = config
+
+    if "enabled" in plugin_cfg:
+        dragon_cfg["enabled"] = bool(plugin_cfg["enabled"])
+
+    animation_cfg = dict(dragon_cfg.get("animation", {}) or {})
+    if "style" in plugin_cfg:
+        animation_cfg["style"] = plugin_cfg["style"]
+    if "speed" in plugin_cfg:
+        try:
+            speed = float(plugin_cfg["speed"])
+            if speed > 0 and animation_cfg.get("fps"):
+                animation_cfg["fps"] = max(1, int(float(animation_cfg["fps"]) * speed))
+        except (TypeError, ValueError):
+            pass
+    if animation_cfg:
+        dragon_cfg["animation"] = animation_cfg
+
+    return dragon_cfg
 
 
 def _get_display(dragon_anim_cfg: dict):
@@ -116,7 +131,7 @@ class LokiAnimationPlugin(Plugin):
 
     def on_start(self, loki) -> None:
         try:
-            dragon_raw = _load_dragon_config()
+            dragon_raw = _resolve_dragon_config(self.config)
 
             if not dragon_raw.get("enabled", True):
                 logger.info("[LokiAnimation] disabled in config; skipping start")

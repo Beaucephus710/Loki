@@ -204,6 +204,19 @@ class TestDragonStateStages(unittest.TestCase):
         # With 5+ XP and hatchling=3, we should have hatched
         self.assertNotEqual(state.stage, "egg")
 
+    def test_interact_feed_play_rest_side_effects_and_clamping(self):
+        state = DragonState(hunger=10, energy=50, last_updated=time.time())
+        state.interact("feed")
+        self.assertEqual(state.hunger, 0)
+
+        state = DragonState(hunger=20, energy=5, last_updated=time.time())
+        state.interact("play")
+        self.assertEqual(state.energy, 0)
+
+        state = DragonState(hunger=20, energy=95, last_updated=time.time())
+        state.interact("rest")
+        self.assertEqual(state.energy, 100)
+
 
 # ---------------------------------------------------------------------------
 # DragonState: mood names
@@ -267,6 +280,25 @@ class TestTimeDecay(unittest.TestCase):
         state.apply_time_decay(now=now + 3600)
         self.assertLessEqual(state.mood, 60)
 
+    def test_decay_clamps_hunger_energy_and_mood_bounds(self):
+        now = time.time()
+        cfg = DragonConfig(
+            {
+                "mood": {
+                    "decay_after_hours": 0.0,
+                    "decay_hunger_per_hour": 20.0,
+                    "decay_energy_per_hour": 20.0,
+                    "decay_mood_per_hour": 20.0,
+                }
+            }
+        )
+        state = DragonState(mood=1, energy=1, hunger=99, last_updated=now)
+        state.configure(cfg)
+        state.apply_time_decay(now=now + 3600)
+        self.assertEqual(state.hunger, 100)
+        self.assertEqual(state.energy, 0)
+        self.assertEqual(state.mood, 0)
+
 
 # ---------------------------------------------------------------------------
 # DragonStateStore: persistence
@@ -303,6 +335,15 @@ class TestDragonStateStore(unittest.TestCase):
             state.last_updated = time.time()
             store.save(state)
             self.assertFalse(path.exists())
+
+    def test_load_with_persist_false_ignores_existing_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "state.json"
+            path.write_text(json.dumps({"xp": 99, "mood": 5, "interactions": 20}))
+            store = DragonStateStore(path, persist=False)
+            state = store.load()
+            self.assertEqual(state.xp, 0)
+            self.assertEqual(state.interactions, 0)
 
     def test_persist_true_writes_file(self):
         with tempfile.TemporaryDirectory() as tmp:

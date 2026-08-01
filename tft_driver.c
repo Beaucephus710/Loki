@@ -257,7 +257,7 @@ hal_status_t tft_write_pixels(uint16_t x, uint16_t y, uint16_t width, uint16_t h
 
     /* Clip to current display bounds */
     if (!tft_clip_rect(&x, &y, &width, &height)) {
-        return HAL_INVALID_PARAM; /* nothing visible */
+        return HAL_OK; /* fully off-screen: no-op */
     }
 
     /* Set address window */
@@ -303,7 +303,7 @@ hal_status_t tft_fill_rect(uint16_t x, uint16_t y, uint16_t width, uint16_t heig
 
     /* Clip to current display bounds */
     if (!tft_clip_rect(&x, &y, &width, &height)) {
-        return HAL_INVALID_PARAM; /* nothing visible */
+        return HAL_OK; /* fully off-screen: no-op */
     }
 
     /* Set address window */

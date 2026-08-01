@@ -13,6 +13,8 @@ static const char *GPIO_SYSFS_PATH = "/sys/class/gpio";
 /* ===== GPIO STATE TRACKING ===== */
 /* Cache to track pin states locally (reduces sysfs reads during toggle operations) */
 static uint32_t gpio_state_cache[256] = {0};  /* Bit array: 1 = HIGH, 0 = LOW */
+#define GPIO_STATE_CACHE_WORDS (sizeof(gpio_state_cache) / sizeof(gpio_state_cache[0]))
+#define GPIO_STATE_CACHE_BITS  (GPIO_STATE_CACHE_WORDS * 32U)
 
 #define GPIO_STATE_SET(pin)     (gpio_state_cache[(pin) / 32] |= (1U << ((pin) % 32)))
 #define GPIO_STATE_CLEAR(pin)   (gpio_state_cache[(pin) / 32] &= ~(1U << ((pin) % 32)))
@@ -40,6 +42,11 @@ static hal_status_t gpio_unexport(uint32_t pin)
     return HAL_OK;
 }
 
+static bool gpio_pin_in_range(uint32_t pin)
+{
+    return pin < GPIO_STATE_CACHE_BITS;
+}
+
 /* ===== PUBLIC IMPLEMENTATION ===== */
 
 hal_status_t gpio_init(void)
@@ -54,6 +61,11 @@ hal_status_t gpio_configure(const gpio_config_t *config)
 {
     if (config == NULL) {
         LOG_ERROR("GPIO configuration failed: config is NULL");
+        return HAL_INVALID_PARAM;
+    }
+    if (!gpio_pin_in_range(config->pin)) {
+        LOG_ERROR("GPIO configuration failed: pin %u out of range (max %u)",
+                 config->pin, GPIO_STATE_CACHE_BITS - 1U);
         return HAL_INVALID_PARAM;
     }
 
@@ -88,6 +100,11 @@ hal_status_t gpio_configure(const gpio_config_t *config)
 
 hal_status_t gpio_set(uint32_t pin, gpio_level_t level)
 {
+    if (!gpio_pin_in_range(pin)) {
+        LOG_ERROR("GPIO set failed: pin %u out of range (max %u)",
+                 pin, GPIO_STATE_CACHE_BITS - 1U);
+        return HAL_INVALID_PARAM;
+    }
     if (level > GPIO_LEVEL_HIGH) {
         LOG_ERROR("Invalid GPIO level: %d", level);
         return HAL_INVALID_PARAM;
@@ -108,6 +125,11 @@ hal_status_t gpio_set(uint32_t pin, gpio_level_t level)
 
 hal_status_t gpio_read(uint32_t pin, gpio_level_t *level)
 {
+    if (!gpio_pin_in_range(pin)) {
+        LOG_ERROR("GPIO read failed: pin %u out of range (max %u)",
+                 pin, GPIO_STATE_CACHE_BITS - 1U);
+        return HAL_INVALID_PARAM;
+    }
     if (level == NULL) {
         LOG_ERROR("GPIO read failed: level pointer is NULL");
         return HAL_INVALID_PARAM;
@@ -121,6 +143,11 @@ hal_status_t gpio_read(uint32_t pin, gpio_level_t *level)
 
 hal_status_t gpio_toggle(uint32_t pin)
 {
+    if (!gpio_pin_in_range(pin)) {
+        LOG_ERROR("GPIO toggle failed: pin %u out of range (max %u)",
+                 pin, GPIO_STATE_CACHE_BITS - 1U);
+        return HAL_INVALID_PARAM;
+    }
     LOG_DEBUG("Toggling GPIO pin %u", pin);
     
     /* OPTIMIZATION: Use cached state instead of reading from sysfs
