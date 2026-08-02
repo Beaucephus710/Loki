@@ -163,6 +163,27 @@ sudo systemctl edit loki
 Set `[web_ui].enabled = false` in `config.toml` to disable the editor. For a
 strictly local-only UI instead, set `[web_ui].host = "127.0.0.1"`.
 
+## A2C AI brain (Pwnagotchi-style adaptive loop)
+
+Loki now includes a local actor-critic plugin at `plugins/ai_brain.py` that
+runs a lightweight A2C loop without external ML dependencies.
+
+1. Enable Bettercap telemetry and the AI brain in `config.toml`:
+   - `[plugins.bettercap].enabled = true`
+   - `[plugins.ai_brain].enabled = true`
+   - `[plugins.ai_brain].learning = true` (online updates)
+2. Start Loki normally with `python3 main.py`.
+3. Let it run for a while; policy/value weights are persisted to:
+   - `~/.local/share/loki/a2c_state.json`
+4. For inference-only behavior, set:
+   - `[plugins.ai_brain].learning = false`
+5. To make inference deterministic (no action sampling), set:
+   - `[plugins.ai_brain].deterministic = true`
+
+The AI brain consumes shared telemetry (AP/client counts and API health) from
+the Bettercap plugin and publishes its current action/probabilities through
+plugin state for other modules to consume.
+
 ## Raspberry Pi Zero W installation (step-by-step)
 
 Use this path if you want to run Loki directly on a Raspberry Pi Zero W.
