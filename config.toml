@@ -122,7 +122,16 @@ model      = "gpt-4o-mini"
 auto_reply = false
 
 # Enable on-device learning / fine-tuning loop
-learning   = false
+learning   = true
+
+# Decision cadence for the local actor-critic policy
+decision_interval = 3.0
+
+# Keep false to allow stochastic action selection in inference mode
+deterministic = false
+
+# Persist learned policy/value weights between runs
+state_path = "~/.local/share/loki/a2c_state.json"
 
 # Verbose debug output for the AI brain plugin
 debug      = false
