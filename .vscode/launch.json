@@ -1,0 +1,42 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    
+
+
+    {
+      "type": "DotNetAutoAttach",
+      "request": "launch",
+      "name": ".NET Core Watch",
+      "args": [],
+      "env": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    {
+      "name": ".NET Core Attach",
+      "type": "coreclr",
+      "request": "attach"
+    },
+
+    {
+      "name": "C/C++ Runner: Debug Session",
+      "type": "cppdbg",
+      "request": "launch",
+      "args": [],
+      "stopAtEntry": false,
+      "externalConsole": true,
+      "cwd": "c:/Users/nlane/.copilot/copilot-worktrees/Loki/beaucephus710-expert-funicular",
+      "program": "c:/Users/nlane/.copilot/copilot-worktrees/Loki/beaucephus710-expert-funicular/build/Debug/outDebug",
+      "MIMode": "gdb",
+      "miDebuggerPath": "gdb",
+      "setupCommands": [
+        {
+          "description": "Enable pretty-printing for gdb",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        }
+      ]
+    }
+  ]
+}
