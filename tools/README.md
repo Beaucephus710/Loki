@@ -70,5 +70,5 @@ sees the files.
 1. Add the key/value pair to the appropriate section in `config.toml`.
 2. Run `python3 tools/gen_config.py`.
 3. The new `#define` will appear in the relevant generated header with the
-   same name (converted to `UPPER_CASE`) and value.
+   same name as the TOML key and the corresponding value.
 4. No changes to existing C source files are required.

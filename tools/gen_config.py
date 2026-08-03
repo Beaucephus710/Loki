@@ -79,6 +79,8 @@ def fmt_hex(v: int) -> str:
     """Return a 0x-prefixed uppercase hex literal."""
     if not isinstance(v, int) or isinstance(v, bool):
         raise TypeError(f"Expected int for hex section, got {type(v).__name__!r}")
+    if v < 0:
+        raise ValueError(f"Hex values must be non-negative integers, got {v}")
     # Use enough digits to represent the value cleanly
     if v <= 0xFF:
         return f"0x{v:02X}"
@@ -179,6 +181,14 @@ def emit_config_h(path: pathlib.Path) -> None:
         f"#define {guard}",
         "",
         BANNER,
+        "",
+        "/**",
+        " * @file config.h",
+        " * @brief Master configuration entry point for the Loki project.",
+        " *",
+        " * AUTO-GENERATED from config.toml by tools/gen_config.py.",
+        " * Edit config.toml and regenerate headers; do not edit generated headers.",
+        " */",
         "",
         "/* Single entry point for all board and pin configuration.",
         " * Include this header instead of board_config.h / pinout.h directly.",
