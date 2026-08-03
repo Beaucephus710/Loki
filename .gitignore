@@ -4,6 +4,8 @@ venv/
 .venv/
 *.log
 *.bak
+*.bak[0-9]*
+*.save
 .vscode/
 .idea/
 

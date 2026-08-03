@@ -9,9 +9,9 @@ Robust main loop for Loki:
 
 import importlib
 import logging
+import os
 import time
 import traceback
-import os
 from pathlib import Path
 from web_ui import ConfigWebUI
 
@@ -25,6 +25,7 @@ MAIN_LOOP_SLEEP = 0.0167  # seconds (60 FPS = ~16.67ms per frame for responsive 
 
 def get_config_path():
     return Path(os.environ.get("LOKI_CONFIG_PATH", str(Path(__file__).with_name("config.toml"))))
+
 
 def discover_plugins():
     """
@@ -48,45 +49,9 @@ def discover_plugins():
             logger.error("Failed to import plugin module %s:\n%s", name, traceback.format_exc())
     return plugins
 
-def instantiate_plugins(modules, config=None):
-    plugin_configs = (config or {}).get("plugins", {})
-    instances = {}
-
-    # modules is expected to be a dict mapping name -> module
-    if isinstance(modules, dict):
-        iterable = modules.items()
-    else:
-        # fallback: build (name, module) pairs for a list of modules
-        iterable = []
-        for m in modules:
-            name = getattr(m, "PLUGIN_NAME", None) or getattr(m, "__name__", None)
-            if not name:
-                name = getattr(m, "__file__", "unknown").split("/")[-1].split(".")[0]
-            iterable.append((name, m))
-
-    for name, module in iterable:
-        if name in {"base", "__init__"}:
-            continue
-        plugin_class = getattr(module, "Plugin", None)
-        if not plugin_class:
-            continue
-        cfg = plugin_configs.get(name, {})
-        if isinstance(cfg, dict) and cfg.get("enabled") is False:
-            logger.info("Plugin %s disabled in config; skipping", name)
-            continue
-        if name == "loki_animation":
-            cfg = {"plugin": cfg, "dragon": (config or {}).get("dragon", {})}
-        try:
-            instances[name] = plugin_class(cfg)
-        except Exception:
-            logger.exception("Failed to instantiate plugin %s", name)
-
-    return instances
 
 def safe_call(method_name, plugin_name, plugin_obj, *args, **kwargs):
-    """
-    Call plugin method safely and log exceptions.
-    """
+    """Call plugin method safely and log exceptions."""
     method = getattr(plugin_obj, method_name, None)
     if not callable(method):
         return None
@@ -96,73 +61,94 @@ def safe_call(method_name, plugin_name, plugin_obj, *args, **kwargs):
         logger.error("Plugin %s.%s failed:\n%s", plugin_name, method_name, traceback.format_exc())
         return None
 
+
 class DisplayFallback:
     """
     Minimal fallback display object used when framebuffer cannot be opened.
-    Renderers should detect absence of fb and use terminal or no-op.
+    Renderers that check ``display.fb`` will get None and should fall back to
+    terminal output or a no-op path.
     """
+
     def __init__(self):
         self.mode = "terminal"
+        self.fb = None
+
     def write(self, *args, **kwargs):
-        # no-op or simple print
         pass
+
     def close(self):
         pass
 
+
 def init_display(config):
     """
-    Try to open framebuffer device from config or default. On failure, return fallback.
+    Try to initialise the display via display.init_display().
+    On any failure return a DisplayFallback so the rest of the program can
+    continue without a physical display attached.
     """
-    display_config = config.get("display", {}) if isinstance(config, dict) else {}
-    fb_dev = display_config.get("device", "/dev/fb1")
+    # Resolve the framebuffer device path for diagnostic messages
     try:
-        # Import lazily so the configuration UI and non-display plugins still
-        # work on headless installations where Pillow is not installed.
-        from display import init_display as create_display
+        fb_dev = config.display().get("device", "/dev/fb1")
+    except Exception:
+        fb_dev = (config.get("device", "/dev/fb1") if isinstance(config, dict) else "/dev/fb1")
 
-        _display = create_display(config)
-        fb = _display.fb
-
-        logger.info("Opened framebuffer device %s", fb_dev)
-        return fb
+    try:
+        import display as _display_module
+        disp = _display_module.init_display(config)
+        logger.info("Display initialised successfully (device=%s)", getattr(disp, "fb_dev", fb_dev))
+        return disp
     except PermissionError:
-        logger.warning("Permission denied opening framebuffer %s; falling back to terminal display", fb_dev)
+        logger.warning(
+            "Permission denied opening display device %s – check that your user is in the 'video' "
+            "group or run with appropriate privileges. Falling back to terminal display.",
+            fb_dev,
+        )
         return DisplayFallback()
     except FileNotFoundError:
-        logger.warning("Framebuffer device %s not found; falling back to terminal display", fb_dev)
+        logger.warning(
+            "Display device %s not found – ensure the framebuffer driver is loaded "
+            "(e.g. modprobe fbtft_device name=adafruit18 or equivalent). "
+            "Falling back to terminal display.",
+            fb_dev,
+        )
         return DisplayFallback()
     except Exception:
-        logger.error("Unexpected error opening framebuffer %s:\n%s", fb_dev, traceback.format_exc())
+        logger.error(
+            "Unexpected error initialising display device %s:\n%s",
+            fb_dev,
+            traceback.format_exc(),
+        )
         return DisplayFallback()
 
-def main():
-    import tomllib
 
-    config_file = get_config_path()
-    with config_file.open("rb") as config_stream:
-        config = tomllib.load(config_stream)
-    web_ui = None
-    web_config = config.get("web_ui", {})
-    if web_config.get("enabled", False):
-        try:
-            web_ui = ConfigWebUI(
-                config_file,
-                host=web_config.get("host", "127.0.0.1"),
-                port=web_config.get("port", 8080),
-            )
-            web_ui.start()
-            logger.info("Configuration UI available at http://%s:%s", web_ui.host, web_ui.port)
-        except (OSError, ValueError):
-            logger.exception("Could not start local configuration UI")
+def main():
+    from config import LokiConfig
+
+    config_path = os.environ.get(
+        "LOKI_CONFIG", os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.toml")
+    )
+    config = LokiConfig(config_path)
+
     # Discover and import plugin modules
     modules = discover_plugins()
     logger.info("Discovered plugin modules: %s", list(modules.keys()))
 
     # Instantiate plugin objects with per-plugin config
-    plugins = instantiate_plugins(modules, config)
+    plugin_configs = config.get("plugins", {})
+    plugins = {}
+    for name, module in modules.items():
+        plugin_class = getattr(module, "Plugin", None)
+        if not plugin_class:
+            continue
+        cfg = plugin_configs.get(name, {})
+        try:
+            instance = plugin_class(cfg)
+            plugins[name] = instance
+        except Exception:
+            logger.exception("Failed to instantiate plugin %s", name)
 
-    # Initialize display (safe)
-    display = init_display(config)
+    # Initialize display (safe) — outside the plugin loop
+    display_obj = init_display(config)
 
     # Call on_start for each plugin (safe)
     for name, plugin in plugins.items():
@@ -174,10 +160,8 @@ def main():
     try:
         logger.info("Entering main loop (60 FPS)")
         while True:
-            # Build shared_state from plugin instances that expose .state
             shared_state.clear()
             for name, plugin in plugins.items():
-                # If plugin has a 'state' attribute, include it
                 try:
                     st = getattr(plugin, "state", None)
                     if st is not None:
@@ -185,30 +169,27 @@ def main():
                 except Exception:
                     logger.debug("Reading state from plugin %s failed", name)
 
-            # Call on_tick for each plugin with shared_state
             for name, plugin in plugins.items():
                 safe_call("on_tick", name, plugin, shared_state)
 
-            # Sleep a short while; keep this outside plugin calls
             time.sleep(MAIN_LOOP_SLEEP)
     except KeyboardInterrupt:
         logger.info("Shutdown requested by user (KeyboardInterrupt)")
     except Exception:
         logger.error("Unhandled exception in main loop:\n%s", traceback.format_exc())
     finally:
-        # Call on_stop for each plugin
         logger.info("Stopping plugins")
         for name, plugin in plugins.items():
             safe_call("on_stop", name, plugin)
-        # Close display if it has close method or is a file
         try:
-            if hasattr(display, "close"):
-                display.close()
+            if hasattr(display_obj, "close"):
+                display_obj.close()
         except Exception:
             logger.debug("Error closing display: %s", traceback.format_exc())
         if web_ui:
             web_ui.stop()
         logger.info("Shutdown complete")
+
 
 if __name__ == "__main__":
     main()

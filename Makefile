@@ -6,6 +6,12 @@
 #
 # Requires: a C compiler (gcc or arm-linux-gnueabihf-gcc)
 
+## Config generation (single source of truth: config.toml)
+PYTHON     ?= python3
+CONFIG_GEN  := tools/gen_config.py
+CONFIG_TOML := config.toml
+CONFIG_HDRS := board_config.h pinout.h config.h
+
 ## Compiler Settings
 CC := $(shell command -v arm-linux-gnueabihf-gcc 2>/dev/null)
 ifeq ($(CC),)
@@ -47,19 +53,33 @@ DEPS := $(OBJECTS:.o=.d)
 TARGET := loki_core.so
  
 ## Linker Settings
-LDFLAGS := -shared -lm -lpthread
+LDFLAGS := -lm -lpthread
+
+## Optional libcurl for AI client (enabled when AI_ENABLED=1 at compile time)
+ifeq ($(AI_ENABLED),1)
+    CFLAGS  += -DAI_ENABLED=1
+    LDFLAGS += -lcurl
+    $(info [INFO] AI_ENABLED=1: building with libcurl support)
+endif
  
-## Build Rules
-all: $(BUILD_DIR)/$(TARGET)
+## Generated config headers — regenerated whenever config.toml or the script changes
+$(CONFIG_HDRS): $(CONFIG_TOML) $(CONFIG_GEN)
+	$(PYTHON) $(CONFIG_GEN)
+
+## Convenience target to regenerate headers without building
+config: $(CONFIG_HDRS)
+
+## Build Rules — generated headers must exist before any .c is compiled
+all: $(CONFIG_HDRS) $(BUILD_DIR)/$(TARGET)
  
 $(BUILD_DIR)/$(TARGET): $(OBJECTS)
 	@$(call MKDIR,$(BUILD_DIR)); true
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 	@echo "[✓] Successfully built $(TARGET) ($(BUILD_DIR))"
  
-$(BUILD_DIR)/core/%.o: core/%.c
-	@$(call MKDIR,$(dir $@)); true
-	$(CC) $(CFLAGS) -fPIC -MMD -MP -c $< -o $@
+$(BUILD_DIR)/%.o: %.c $(CONFIG_HDRS)
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -MMD -MP -c $< -o $@
 	@echo "[CC] $<"
  
 ## Include dependencies
@@ -122,4 +142,4 @@ info:
 	@echo "║ Target path: $(CROSS_PATH)"
 	@echo "╚════════════════════════════════════════╝"
  
-.PHONY: all clean clean-all install run test docs analyze size info
+.PHONY: all config clean clean-all install run test docs analyze size info

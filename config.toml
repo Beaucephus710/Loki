@@ -31,78 +31,14 @@ ascii_mode = true
 
 
 ##############################################
-# WEB UI  (Pwnagotchi-style USB web access)
-# Loki is 10.0.0.2 — the host machine is 10.0.0.1
+# DISPLAY (top-level – used by LokiConfig.display())
 ##############################################
-
-[web_ui]
-enabled = true
-host    = "10.0.0.2"
-port    = 8080
-
-
-##############################################
-# DISPLAY
-# Top-level display block consumed by the
-# core display module (config.display()).
-# Keep in sync with [plugins.display] below.
-##############################################
-
 [display]
-# Framebuffer device (e.g. /dev/fb0 for HDMI, /dev/fb1 for SPI TFT)
-device       = "/dev/fb1"
-
-# Framebuffer driver backend: "fb" (Linux framebuffer) or "pygame"
-driver       = "fb"
-
-# Physical pixel dimensions — must match your screen
-width        = 480
-height       = 320
-
-# Pixel colour format: "RGB" (24-bit) or "RGB565" (16-bit, most SPI TFTs)
+width = 480
+height = 320
+device = "/dev/fb1"
 pixel_format = "RGB565"
-
-# Animation preset name to use for display-level animations
-animation    = "default"
-
-# Invert display colours
-invert       = false
-
-# Backlight / contrast level (0–100)
-contrast     = 50
-
-
-##############################################
-# DEPLOYMENT / SSH
-# Used by Makefile and build scripts when
-# pushing a compiled binary to the target
-# device over SSH/SCP.
-##############################################
-
-[deploy]
-# SSH username on the target device
-user = "pi"
-
-# Hostname or IP address of the target device
-host = "orange-pi.local"
-
-# Remote path where the binary is uploaded
-path = "/tmp"
-
-# SSH port (default 22)
-port = 22
-
-
-##############################################
-# LOGGING
-##############################################
-
-[logging]
-# Log level: 1=CRITICAL  2=ERROR  3=WARN  4=INFO  5=DEBUG
-level = 4
-
-# Write log output to this file (leave blank to log to stdout only)
-file = ""
+animation = "boot_sequence"
 
 
 ##############################################
@@ -114,27 +50,12 @@ enabled    = true
 
 # Set to true to call the OpenAI API instead of a local model
 use_openai = false
-
-# Model identifier (OpenAI model name or local model path)
-model      = "gpt-4o-mini"
-
-# Automatically reply to incoming messages without user input
+api_key = ""
+api_url = "https://api.openai.com/v1/chat/completions"
+model = "gpt-4o-mini"
+timeout = 30
 auto_reply = false
-
-# Enable on-device learning / fine-tuning loop
-learning   = true
-
-# Decision cadence for the local actor-critic policy
-decision_interval = 3.0
-
-# Keep false to allow stochastic action selection in inference mode
-deterministic = false
-
-# Persist learned policy/value weights between runs
-state_path = "~/.local/share/loki/a2c_state.json"
-
-# Verbose debug output for the AI brain plugin
-debug      = false
+debug = false
 
 
 ##############################################
@@ -340,72 +261,139 @@ auto_upload = false
 
 
 ##############################################
-# DRAGON — GROWTH, MOOD & ANIMATION
-#
-# Tweak these numbers to change how fast Loki
-# grows and how moods shift — no code edits needed.
+# HARDWARE BOARD/PIN CONFIG (for tools/gen_config.py)
 ##############################################
 
-[dragon]
-# Disable the dragon system entirely by setting this to false
-enabled    = true
+[board]
+# Board identification
+BOARD_NAME    = "Orange Pi Zero 2W Loki"
+BOARD_VERSION = "1.0"
+BOARD_MODEL   = "OPI_ZERO_2W"
 
-# Path to the persisted dragon-state JSON (~ is expanded at runtime)
-state_path = "~/.local/share/loki/dragon_state.json"
+# Power configuration
+POWER_INPUT_VOLTAGE  = 5.0   # 5 V USB input from Flipper
+POWER_LOGIC_VOLTAGE  = 3.3   # 3.3 V logic level
+LDO_ENABLE_DELAY_MS  = 10    # LDO startup delay (ms)
 
-# Set to false to skip loading/saving state (handy for demos)
-persist    = true
+# TFT display configuration
+TFT_WIDTH        = 480
+TFT_HEIGHT       = 320
+TFT_SPI_FREQ     = 40000000  # 40 MHz
+TFT_TYPE         = "ILI9488"
+TFT_COLOR_DEPTH  = 16        # bits per pixel
+TFT_ROTATION     = 0         # 0=Normal 1=90° 2=180° 3=270°
+TFT_BRIGHTNESS   = 100       # default brightness 0-100 %
 
-# ── XP thresholds ─────────────────────────────────────────────────────────────
-[dragon.xp]
-# XP required to reach each life stage (egg always starts at 0)
-# Raise to slow growth, lower to speed it up
-hatchling = 5
-juvenile  = 25
-adult     = 75
+# SD card configuration
+SD_SPI_FREQ    = 25000000    # 25 MHz
+SD_SECTOR_SIZE = 512         # bytes
+SD_FAST_MODE   = 1           # enable fast SPI after init
 
-# XP awarded per interaction type
-care = 2
-talk = 1
-play = 2
-feed = 1
-rest = 1
+# Loki Credits Flash configuration (W25Q40)
+FLASH_IC_TYPE     = "W25Q40"
+FLASH_CAPACITY    = 524288   # 512 KiB in bytes
+FLASH_PAGE_SIZE   = 256      # bytes
+FLASH_SECTOR_SIZE = 4096     # bytes
+FLASH_SPI_FREQ    = 20000000 # 20 MHz
 
-# ── Mood ──────────────────────────────────────────────────────────────────────
-[dragon.mood]
-# Mood score boundaries (0–100).  At or above each value → that mood label.
-happy   = 80
-content = 55
-sleepy  = 30
-# Below the sleepy threshold Loki is "grumpy"
+# EEPROM configuration (FT24C02A)
+EEPROM_IC_TYPE  = "FT24C02A"
+EEPROM_CAPACITY = 256        # bytes
+EEPROM_PAGE_SIZE = 8         # bytes
+EEPROM_I2C_FREQ = 100000     # 100 kHz standard mode
 
-# Mood points added per interaction type
-care = 5
-talk = 3
-play = 6
-feed = 4
-rest = 2
+# UART Flipper configuration
+UART1_BAUD_RATE      = 115200
+UART1_DATA_BITS      = 8
+UART1_STOP_BITS      = 1
+UART1_RX_BUFFER_SIZE = 256
+UART1_TX_BUFFER_SIZE = 256
 
-# Idle decay — how quickly needs drop when Loki is left alone
-decay_after_hours      = 0.25   # inactivity hours before decay starts
-decay_hunger_per_hour  = 4
-decay_energy_per_hour  = 3
-decay_mood_per_hour    = 2
+# Decoupling capacitor values
+DECAP_BULK_UF    = 10    # 10 µF bulk
+DECAP_CERAMIC_UF = 0.1   # 0.1 µF ceramic
 
-# ── Animation ─────────────────────────────────────────────────────────────────
-[dragon.animation]
-# Set to false to disable rendering even when the plugin is enabled
-enabled    = true
+# Pull-up resistors
+I2C_PULLUP_OHM = 4700    # 4.7 kΩ for I2C SDA/SCL
 
-# Frame dimensions in pixels — must match your display resolution
-width      = 480
-height     = 320
+# Error handling
+ENABLE_ERROR_LOGGING  = 1
+ERROR_LOG_BUFFER_SIZE = 256
 
-# Target frames per second for the render loop
-fps        = 10
+# Timing constants (ms)
+INIT_DELAY_TFT    = 100
+INIT_DELAY_FLASH  = 10
+INIT_DELAY_EEPROM = 5
 
-# Background fill colour as [R, G, B]
-background = [12, 18, 38]
+# ─────────────────────────────────────────────────────────────────────────────
+# [board.hex] — Integer values emitted as 0x… hex literals in C.
+#   TOML hex syntax (0x…) is used here for clarity; values are still integers.
+# ─────────────────────────────────────────────────────────────────────────────
+[board.hex]
+FLASH_JEDEC_ID  = 0xEF4013   # W25Q40 JEDEC ID
+EEPROM_I2C_ADDR = 0x50       # FT24C02A I2C 7-bit address
 
-# Visual style: "default" is the only built-in style
-style      = "default"
+# ─────────────────────────────────────────────────────────────────────────────
+# [board.raw] — Values emitted as raw C identifiers/expressions (no quotes).
+# ─────────────────────────────────────────────────────────────────────────────
+[board.raw]
+UART1_PARITY = "UART_PARITY_NONE"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# [pinout] — GPIO/SPI/I2C/UART pin numbers and PWM settings.
+# ─────────────────────────────────────────────────────────────────────────────
+[pinout]
+# GPIO pins
+GPIO_TFT_DC  = 18   # TFT Data/Command control
+GPIO_TFT_RST = 22   # TFT Reset
+GPIO_TFT_BL  = 7    # TFT Backlight (PWM capable)
+
+# SPI0 pins (TFT display)
+SPI0_SCK  = 23
+SPI0_MOSI = 19
+SPI0_MISO = 21
+SPI0_CS0  = 24      # Chip Select 0 (TFT)
+SPI0_CS1  = 26      # Chip Select 1 (TFT Touch, optional)
+
+# SPI1 pins (SD card)
+SPI1_SCK  = 29
+SPI1_MOSI = 31
+SPI1_MISO = 33
+SPI1_CS0  = 32      # Chip Select 0 (SD Card)
+
+# SPI2 pins (Loki Credits Flash)
+SPI2_SCK  = 13
+SPI2_MOSI = 11
+SPI2_MISO = 12
+SPI2_CS0  = 15      # Chip Select 0 (Flash)
+
+# I2C0 pins (EEPROM)
+I2C0_SDA = 3
+I2C0_SCL = 5
+
+# UART1 pins (Flipper Zero)
+UART1_TX = 8
+UART1_RX = 10
+
+# Power pins
+PIN_5V_IN   = 2
+PIN_3V3_OUT = 1
+PIN_GND     = 6
+
+# PWM
+PWM_FREQ_DEFAULT = 1000   # 1 kHz backlight PWM
+
+# ─────────────────────────────────────────────────────────────────────────────
+# [pinout.hex] — Integer values emitted as 0x… hex literals in C.
+# ─────────────────────────────────────────────────────────────────────────────
+[pinout.hex]
+EEPROM_ADDR = 0x50   # FT24C02A EEPROM I2C address
+
+# ─────────────────────────────────────────────────────────────────────────────
+# [pinout.raw] — Device CS/alias definitions (raw C identifiers, no quotes).
+# ─────────────────────────────────────────────────────────────────────────────
+[pinout.raw]
+TFT_CS           = "SPI0_CS0"
+SD_CS            = "SPI1_CS0"
+FLASH_CS         = "SPI2_CS0"
+PWM_TFT_BACKLIGHT = "GPIO_TFT_BL"

@@ -1,307 +1,178 @@
-import json
+"""
+AI Brain plugin for Loki.
+
+Sends prompts to an OpenAI-compatible API (OpenAI, Ollama, local LLM servers)
+and exposes results via the ``state`` dict that other plugins can read.
+
+Configuration (config.toml, [plugins.ai_brain]):
+  enabled     = true/false
+  use_openai  = false          # set true and provide api_key to use OpenAI
+  api_key     = ""             # OpenAI or compatible API key
+  api_url     = "https://api.openai.com/v1/chat/completions"
+  model       = "gpt-4o-mini"
+  timeout     = 30             # HTTP request timeout in seconds
+  auto_reply  = false
+  debug       = false
+"""
+
 import logging
-import math
-import os
-import random
+import threading
 import time
-from pathlib import Path
-
-from .base import Plugin
-
+import traceback
 
 logger = logging.getLogger("loki.plugins.ai_brain")
 
 
-class A2CBrainPlugin(Plugin):
-    """Lightweight on-device actor-critic brain.
-
-    This plugin uses a tiny linear A2C model with hand-crafted observations so it
-    can run without external ML dependencies.
-    """
-
-    ACTIONS = ["scan", "channel_hop", "focus_ap", "idle", "cooldown"]
-    FEATURES = 8
-
+class Plugin:
     def __init__(self, config=None):
-        super().__init__(config or {})
+        self.config = config or {}
+        self.enabled = self.config.get("enabled", False)
+        self.use_openai = self.config.get("use_openai", False)
+        self.api_key = self.config.get("api_key", "")
+        self.api_url = self.config.get(
+            "api_url", "https://api.openai.com/v1/chat/completions"
+        )
+        self.model = self.config.get("model", "gpt-4o-mini")
+        self.timeout = int(self.config.get("timeout", 30))
+        self.auto_reply = self.config.get("auto_reply", False)
+        self.debug = self.config.get("debug", False)
 
-        cfg = self.config if isinstance(self.config, dict) else {}
-        self.enabled = bool(cfg.get("enabled", True))
-        self.learning = bool(cfg.get("learning", False))
-        self.debug = bool(cfg.get("debug", False))
-        self.deterministic = bool(cfg.get("deterministic", False))
-        self.model_name = str(cfg.get("model", "local-a2c"))
-        self.gamma = float(cfg.get("gamma", 0.95))
-        self.actor_lr = float(cfg.get("actor_lr", 0.05))
-        self.critic_lr = float(cfg.get("critic_lr", 0.10))
-        self.temperature = max(0.05, float(cfg.get("temperature", 1.0)))
-        self.decision_interval = max(0.0, float(cfg.get("decision_interval", 3.0)))
-
-        default_state_path = "~/.local/share/loki/a2c_state.json"
-        self.state_path = Path(os.path.expanduser(str(cfg.get("state_path", default_state_path))))
-        self.max_steps_between_saves = max(1, int(cfg.get("save_every_steps", 25)))
-
-        self._actor_weights = [
-            [0.0 for _ in range(self.FEATURES)] for _ in range(len(self.ACTIONS))
-        ]
-        self._critic_weights = [0.0 for _ in range(self.FEATURES)]
-
-        self._started = False
-        self._last_decision_ts = 0.0
-        self._steps_since_save = 0
-        self._total_steps = 0
-
-        self._last_obs = None
-        self._last_action = None
-        self._last_probs = None
-        self._last_value = None
-        self._last_metrics = None
-
-        self._prev_action_name = "idle"
         self.state = {
-            "enabled": self.enabled,
-            "learning": self.learning,
-            "model": self.model_name,
-            "current_action": "idle",
-            "action_probs": {action: 1.0 / len(self.ACTIONS) for action in self.ACTIONS},
-            "last_reward": 0.0,
-            "last_value": 0.0,
-            "steps": 0,
+            "last_prompt": None,
+            "last_response": None,
+            "error": None,
+            "ready": False,
         }
+
+        self._lock = threading.Lock()
+        self._session = None  # requests.Session, lazily created
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _get_session(self):
+        """Return a cached requests.Session, creating it on first call."""
+        if self._session is None:
+            try:
+                import requests
+                self._session = requests.Session()
+                if self.api_key:
+                    self._session.headers.update(
+                        {"Authorization": f"******"}
+                    )
+                self._session.headers.update({"Content-Type": "application/json"})
+            except ImportError:
+                logger.error("[AIBrain] 'requests' library not installed; pip install requests")
+                raise
+        return self._session
+
+    def _query(self, prompt):
+        """
+        Send *prompt* to the configured API and return the reply string.
+        Raises on failure so callers can handle the error.
+        """
+        session = self._get_session()
+        payload = {
+            "model": self.model,
+            "messages": [{"role": "user", "content": prompt}],
+        }
+        if self.debug:
+            logger.debug("[AIBrain] POST %s  model=%s  prompt=%.80s…", self.api_url, self.model, prompt)
+
+        response = session.post(self.api_url, json=payload, timeout=self.timeout)
+        response.raise_for_status()
+
+        data = response.json()
+        choices = data.get("choices") or []
+        if not choices:
+            raise ValueError("API response contained no choices")
+        content = choices[0].get("message", {}).get("content", "")
+        return content.strip()
+
+    # ------------------------------------------------------------------
+    # Plugin lifecycle
+    # ------------------------------------------------------------------
 
     def on_start(self, loki):
         if not self.enabled:
-            logger.info("[AI Brain] disabled in config")
+            logger.info("[AIBrain] Plugin disabled in config.")
             return
 
-        self._load_state()
-        self._started = True
-        logger.info(
-            "[AI Brain] started (learning=%s, model=%s, decision_interval=%.2fs)",
-            self.learning,
-            self.model_name,
-            self.decision_interval,
-        )
+        if self.use_openai and not self.api_key:
+            logger.warning(
+                "[AIBrain] use_openai=true but api_key is empty; "
+                "AI queries will fail until a key is provided."
+            )
+
+        try:
+            import requests  # noqa: F401 – validate dependency is present
+            with self._lock:
+                self.state["ready"] = True
+            logger.info(
+                "[AIBrain] Started (use_openai=%s, model=%s, url=%s)",
+                self.use_openai, self.model, self.api_url,
+            )
+        except ImportError:
+            logger.error("[AIBrain] 'requests' is required; install it with: pip install requests")
+            with self._lock:
+                self.state["error"] = "requests not installed"
 
     def on_tick(self, shared_state):
-        if not self.enabled or not self._started:
-            return
-
-        now = time.time()
-        if now - self._last_decision_ts < self.decision_interval:
-            return
-        self._last_decision_ts = now
-
-        obs, metrics = self._build_observation(shared_state)
-        probs, value = self._policy_and_value(obs)
-        action_idx = self._select_action(probs)
-        action_name = self.ACTIONS[action_idx]
-
-        reward = 0.0
-        if self._last_obs is not None and self._last_metrics is not None:
-            reward = self._compute_reward(self._last_metrics, metrics, action_name)
-            if self.learning:
-                self._update_a2c(
-                    prev_obs=self._last_obs,
-                    prev_action=self._last_action,
-                    prev_probs=self._last_probs,
-                    prev_value=self._last_value,
-                    reward=reward,
-                    next_value=value,
-                )
-                self._steps_since_save += 1
-                if self._steps_since_save >= self.max_steps_between_saves:
-                    self._save_state()
-
-        self._last_obs = obs
-        self._last_action = action_idx
-        self._last_probs = probs
-        self._last_value = value
-        self._last_metrics = metrics
-        self._prev_action_name = action_name
-        self._total_steps += 1
-
-        self.state = {
-            "enabled": self.enabled,
-            "learning": self.learning,
-            "model": self.model_name,
-            "current_action": action_name,
-            "action_probs": {
-                self.ACTIONS[i]: round(probs[i], 4) for i in range(len(self.ACTIONS))
-            },
-            "last_reward": round(reward, 4),
-            "last_value": round(value, 4),
-            "steps": self._total_steps,
-            "observation": {
-                "ap_count": metrics["ap_count"],
-                "client_count": metrics["client_count"],
-                "error_count": metrics["error_count"],
-            },
-        }
-
-        if self.debug:
-            logger.info(
-                "[AI Brain] action=%s reward=%.3f value=%.3f probs=%s",
-                action_name,
-                reward,
-                value,
-                self.state["action_probs"],
-            )
-
-    def on_stop(self):
         if not self.enabled:
             return
-        self._save_state()
-        self._started = False
-        logger.info("[AI Brain] stopped")
-
-    def _build_observation(self, shared_state):
-        bettercap_state = {}
-        if isinstance(shared_state, dict):
-            maybe_bettercap = shared_state.get("bettercap")
-            if isinstance(maybe_bettercap, dict):
-                bettercap_state = maybe_bettercap
-
-        ap_count = int(bettercap_state.get("ap_count", 0) or 0)
-        client_count = int(bettercap_state.get("client_count", 0) or 0)
-        error_count = int(bettercap_state.get("error_count", 0) or 0)
-        http_status = int(bettercap_state.get("last_http_status", 0) or 0)
-
-        prev_ap = int(self._last_metrics["ap_count"]) if self._last_metrics else ap_count
-        prev_clients = (
-            int(self._last_metrics["client_count"]) if self._last_metrics else client_count
-        )
-
-        delta_ap = ap_count - prev_ap
-        delta_clients = client_count - prev_clients
-
-        is_error_status = 1.0 if http_status >= 400 else 0.0
-        repeated_action = 1.0 if self._prev_action_name in ("idle", "cooldown") else 0.0
-
-        obs = [
-            1.0,
-            min(ap_count / 40.0, 1.0),
-            min(client_count / 100.0, 1.0),
-            max(-1.0, min(delta_ap / 5.0, 1.0)),
-            max(-1.0, min(delta_clients / 8.0, 1.0)),
-            min(error_count / 10.0, 1.0),
-            is_error_status,
-            repeated_action,
-        ]
-
-        metrics = {
-            "ap_count": ap_count,
-            "client_count": client_count,
-            "error_count": error_count,
-            "delta_ap": delta_ap,
-            "delta_clients": delta_clients,
-            "http_status": http_status,
-        }
-        return obs, metrics
-
-    def _compute_reward(self, previous_metrics, current_metrics, action_name):
-        reward = 0.0
-        reward += 1.2 * max(0, current_metrics["ap_count"] - previous_metrics["ap_count"])
-        reward += 0.6 * max(
-            0, current_metrics["client_count"] - previous_metrics["client_count"]
-        )
-        reward -= 0.25 * max(
-            0, current_metrics["error_count"] - previous_metrics["error_count"]
-        )
-
-        if action_name in ("idle", "cooldown"):
-            reward -= 0.05
-        if action_name == self._prev_action_name:
-            reward -= 0.03
-        if current_metrics["http_status"] >= 400:
-            reward -= 0.08
-        return reward
-
-    def _policy_and_value(self, obs):
-        logits = []
-        for action_idx in range(len(self.ACTIONS)):
-            logit = 0.0
-            weights = self._actor_weights[action_idx]
-            for i in range(self.FEATURES):
-                logit += weights[i] * obs[i]
-            logits.append(logit / self.temperature)
-
-        max_logit = max(logits) if logits else 0.0
-        exp_logits = [math.exp(logit - max_logit) for logit in logits]
-        denom = sum(exp_logits) or 1.0
-        probs = [value / denom for value in exp_logits]
-
-        value = 0.0
-        for i in range(self.FEATURES):
-            value += self._critic_weights[i] * obs[i]
-
-        return probs, value
-
-    def _select_action(self, probs):
-        if not self.learning and self.deterministic:
-            best_idx = max(range(len(probs)), key=lambda idx: probs[idx])
-            return int(best_idx)
-        choice = random.random()
-        cumulative = 0.0
-        for idx, prob in enumerate(probs):
-            cumulative += prob
-            if choice <= cumulative:
-                return idx
-        return len(probs) - 1
-
-    def _update_a2c(self, prev_obs, prev_action, prev_probs, prev_value, reward, next_value):
-        td_target = reward + (self.gamma * next_value)
-        advantage = td_target - prev_value
-
-        for feature_idx in range(self.FEATURES):
-            self._critic_weights[feature_idx] += (
-                self.critic_lr * advantage * prev_obs[feature_idx]
-            )
-
-        for action_idx in range(len(self.ACTIONS)):
-            indicator = 1.0 if action_idx == prev_action else 0.0
-            grad_log_prob = indicator - prev_probs[action_idx]
-            for feature_idx in range(self.FEATURES):
-                self._actor_weights[action_idx][feature_idx] += (
-                    self.actor_lr * advantage * grad_log_prob * prev_obs[feature_idx]
-                )
-
-    def _load_state(self):
-        try:
-            if not self.state_path.exists():
-                return
-            payload = json.loads(self.state_path.read_text(encoding="utf-8"))
-        except Exception:
-            logger.exception("[AI Brain] failed to load state from %s", self.state_path)
+        if not self.state.get("ready"):
             return
 
-        actor = payload.get("actor_weights")
-        critic = payload.get("critic_weights")
-        total_steps = int(payload.get("total_steps", 0) or 0)
+        # auto_reply: pick up any prompt queued in shared_state by other plugins
+        if self.auto_reply and shared_state:
+            for plugin_name, pstate in shared_state.items():
+                if not isinstance(pstate, dict):
+                    continue
+                prompt = pstate.get("ai_prompt")
+                if not prompt:
+                    continue
+                logger.info("[AIBrain] Received prompt from plugin '%s'", plugin_name)
+                self._handle_prompt(prompt)
+                break  # process one prompt per tick
 
-        if (
-            isinstance(actor, list)
-            and len(actor) == len(self.ACTIONS)
-            and all(isinstance(row, list) and len(row) == self.FEATURES for row in actor)
-        ):
-            self._actor_weights = [[float(value) for value in row] for row in actor]
-        if isinstance(critic, list) and len(critic) == self.FEATURES:
-            self._critic_weights = [float(value) for value in critic]
-        self._total_steps = total_steps
+    def query(self, prompt):
+        """
+        Public method: send a prompt and return the response string.
+        Thread-safe; can be called by other plugins.
+        Returns None on error.
+        """
+        if not self.state.get("ready"):
+            logger.warning("[AIBrain] query() called before plugin is ready")
+            return None
+        return self._handle_prompt(prompt)
 
-    def _save_state(self):
-        payload = {
-            "actor_weights": self._actor_weights,
-            "critic_weights": self._critic_weights,
-            "total_steps": self._total_steps,
-            "saved_at": int(time.time()),
-        }
+    def _handle_prompt(self, prompt):
         try:
-            self.state_path.parent.mkdir(parents=True, exist_ok=True)
-            self.state_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-            self._steps_since_save = 0
+            reply = self._query(prompt)
+            with self._lock:
+                self.state["last_prompt"] = prompt
+                self.state["last_response"] = reply
+                self.state["error"] = None
+            if self.debug:
+                logger.debug("[AIBrain] Reply: %.120s…", reply)
+            return reply
         except Exception:
-            logger.exception("[AI Brain] failed to save state to %s", self.state_path)
+            err = traceback.format_exc()
+            logger.error("[AIBrain] Query failed:\n%s", err)
+            with self._lock:
+                self.state["last_prompt"] = prompt
+                self.state["last_response"] = None
+                self.state["error"] = err
+            return None
 
-
-Plugin = A2CBrainPlugin
+    def on_stop(self):
+        logger.info("[AIBrain] Stopping plugin")
+        with self._lock:
+            self.state["ready"] = False
+        if self._session:
+            try:
+                self._session.close()
+            except Exception:
+                pass
+            self._session = None
