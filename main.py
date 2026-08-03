@@ -1,4 +1,3 @@
-import display
 #!/usr/bin/env python3
 """
 Robust main loop for Loki:
@@ -125,7 +124,9 @@ def init_display(config):
 def main():
     # Minimal config placeholder; replace with your real config loader if present
     import toml
-    config = toml.load("/home/loki/Loki/config.toml")
+    import os
+    config_path = os.environ.get("LOKI_CONFIG", os.path.join(os.path.dirname(__file__), "config.toml"))
+    config = toml.load(config_path)
     # Discover and import plugin modules
     modules = discover_plugins()
     logger.info("Discovered plugin modules: %s", list(modules.keys()))
@@ -146,8 +147,8 @@ def main():
         except Exception:
             logger.exception("Failed to instantiate plugin %s", name)
 
-        # Initialize display (safe)
-        display = init_display(config)
+    # Initialize display (safe) — outside the plugin loop
+    display = init_display(config)
 
     # Call on_start for each plugin (safe)
     for name, plugin in plugins.items():

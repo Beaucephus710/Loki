@@ -49,6 +49,7 @@ hop_interval = 3
 enabled = true
 driver = "fb"
 device = "/dev/fb1"
+pixel_format = "RGB565"
 invert = false
 contrast = 50
 
@@ -138,7 +139,7 @@ auto_handshake = false
 ##############################################
 [plugins.wpa_sec]
 enabled = true
-api_key = "f0216eff13239c545958864edf66153c"
+api_key = ""
 auto_fetch = true
 auto_upload = true
 interval = 30
