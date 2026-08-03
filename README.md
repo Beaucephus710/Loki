@@ -166,7 +166,7 @@ This README now focuses only on the most teachable and durable information. For 
 
 - `BUILD.md`
 - `BUILD_WINDOWS.md`
-- `DEPLOYMENT.md`
+- [`DEPLOYMENT.md`](DEPLOYMENT.md) — cross-compile and deploy to Orange Pi / Raspberry Pi, including [setting up Loki as a persistent systemd service](DEPLOYMENT.md#using-systemd-service)
 - `CONTRIBUTING.md`
 - `QUICK_REFERENCE.md`
 
