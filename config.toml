@@ -176,14 +176,12 @@ hop_interval = 3
 ##############################################
 
 [plugins.display]
-enabled      = true
-driver       = "fb"
-device       = "/dev/fb1"
-width        = 480
-height       = 320
+enabled = true
+driver = "fb"
+device = "/dev/fb1"
 pixel_format = "RGB565"
-invert       = false
-contrast     = 50
+invert = false
+contrast = 50
 
 
 ##############################################
@@ -306,8 +304,9 @@ auto_handshake = false
 ##############################################
 
 [plugins.wpa_sec]
-enabled     = true
-auto_fetch  = true
+enabled = true
+api_key = ""
+auto_fetch = true
 auto_upload = true
 
 # Seconds between upload/fetch cycles

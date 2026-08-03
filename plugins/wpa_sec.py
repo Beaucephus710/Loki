@@ -62,7 +62,7 @@ class Plugin:
             if response.status_code == 200:
                 text = response.text or ""
                 logger.info("[WPA-SEC] Handshake response length: %d", len(text))
-                logger.debug("[WPA-SEC] Handshake preview: %s", text[:1000])
+                # Response may contain sensitive hash data; do not log its content
                 # Optionally parse or save the response here
                 # If auto_upload is enabled, implement safe upload triggers here
             else:
