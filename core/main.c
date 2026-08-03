@@ -1,4 +1,3 @@
-<<<<<<< HEAD:core/main.c
 /**
  * @file main.c
  * @brief Loki - Orange Pi Zero 2W Interactive Display System
@@ -246,5 +245,3 @@ int main(int argc, char *argv[])
     
     return EXIT_SUCCESS;
 }
-=======
->>>>>>> origin/main:main.c
