@@ -1,7 +1,9 @@
 from PIL import Image, ImageDraw
-import time
 import logging
+import os
 import threading
+import time
+import traceback
 
 logger = logging.getLogger("loki.display")
 
@@ -9,6 +11,73 @@ logger = logging.getLogger("loki.display")
 _fb_opened = False
 _display_instance = None
 _display_lock = threading.Lock()
+
+
+def _resolve_display_config(config):
+    """
+    Extract a flat display-config dict from either a LokiConfig object or a
+    plain dict (e.g. the ``[plugins.display]`` section from config.toml).
+
+    Priority:
+      1. LokiConfig object  → calls config.display()
+      2. Plain dict         → used directly (supports plugin passing its own cfg)
+      3. Anything else      → empty dict, driver defaults take over
+    """
+    if config is None:
+        return {}
+    if hasattr(config, "display") and callable(getattr(config, "display", None)):
+        try:
+            result = config.display()
+            return result if isinstance(result, dict) else {}
+        except Exception:
+            logger.debug("config.display() raised; falling back to empty config")
+            return {}
+    if isinstance(config, dict):
+        return config
+    return {}
+
+
+def _diagnose_framebuffer(fb_dev):
+    """
+    Log diagnostic information that helps operators understand why a
+    framebuffer device could not be opened.
+    """
+    logger.error("=== Display bring-up diagnostics for %s ===", fb_dev)
+
+    # Check whether the device node exists at all
+    if not os.path.exists(fb_dev):
+        logger.error("  [✗] Device node %s does not exist.", fb_dev)
+        logger.error("      • Verify the kernel driver is loaded:  lsmod | grep -E 'fbtft|ili9488|st7789'")
+        logger.error("      • Load the driver manually (example):  sudo modprobe fbtft_device name=adafruit18")
+        logger.error("      • Check dmesg for driver errors:        dmesg | tail -40")
+    else:
+        try:
+            stat = os.stat(fb_dev)
+            logger.error("  [✓] Device node exists (mode=%o, uid=%d, gid=%d)",
+                         stat.st_mode, stat.st_uid, stat.st_gid)
+        except Exception as exc:
+            logger.error("  [?] Could not stat %s: %s", fb_dev, exc)
+
+        # Check read/write access
+        readable = os.access(fb_dev, os.R_OK)
+        writable = os.access(fb_dev, os.W_OK)
+        logger.error("  [%s] Readable: %s", "✓" if readable else "✗", readable)
+        logger.error("  [%s] Writable: %s", "✓" if writable else "✗", writable)
+        if not writable:
+            logger.error("      • Add your user to the 'video' group:  sudo usermod -aG video $USER")
+            logger.error("      • Then log out and back in, or:         newgrp video")
+
+    # Check for other framebuffer devices that may be available
+    try:
+        fbs = [f for f in os.listdir("/dev") if f.startswith("fb")]
+        if fbs:
+            logger.error("  [i] Other framebuffer devices present: %s", fbs)
+        else:
+            logger.error("  [i] No framebuffer devices found under /dev.")
+    except Exception:
+        pass
+
+    logger.error("=== End of display diagnostics ===")
 
 
 def _convert_to_pixel_format(img, pixel_format):
@@ -67,28 +136,44 @@ class LokiDisplay:
             self.fb = existing.fb
             return
 
-        # Normal initialization (first instance)
-        try:
-            disp_cfg = config.display() if hasattr(config, "display") else {}
-        except Exception:
-            disp_cfg = {}
+        # Resolve config to a plain dict regardless of what was passed in
+        disp_cfg = _resolve_display_config(config)
+
         self.width = disp_cfg.get("width", 480)
         self.height = disp_cfg.get("height", 320)
         self.animation = disp_cfg.get("animation", "boot_sequence")
-        self.fb_dev = disp_cfg.get("device", "/dev/fb1") if isinstance(disp_cfg, dict) else "/dev/fb1"
+        self.fb_dev = disp_cfg.get("device", "/dev/fb1")
         # pixel_format must match the framebuffer depth configured by the kernel driver.
-        # fbtft SPI TFT displays on Raspberry Pi default to 16bpp RGB565.
-        self.pixel_format = disp_cfg.get("pixel_format", "RGB565") if isinstance(disp_cfg, dict) else "RGB565"
+        # fbtft SPI TFT displays default to 16bpp RGB565.
+        self.pixel_format = disp_cfg.get("pixel_format", "RGB565")
+        self.fb = None
+
+        logger.info(
+            "Initialising display: device=%s pixel_format=%s size=%dx%d",
+            self.fb_dev, self.pixel_format, self.width, self.height,
+        )
 
         try:
             self.fb = open(self.fb_dev, "wb", buffering=0)
             logger.info("Opened framebuffer device %s (%s)", self.fb_dev, self.pixel_format)
+        except PermissionError as e:
+            logger.error("Permission denied opening framebuffer %s: %s", self.fb_dev, e)
+            _diagnose_framebuffer(self.fb_dev)
+        except FileNotFoundError as e:
+            logger.error("Framebuffer device %s not found: %s", self.fb_dev, e)
+            _diagnose_framebuffer(self.fb_dev)
         except Exception as e:
             logger.error("Unexpected error opening framebuffer %s: %s", self.fb_dev, e)
-            self.fb = None
+            logger.debug(traceback.format_exc())
+            _diagnose_framebuffer(self.fb_dev)
 
         _display_instance = self
         _fb_opened = True
+
+    @property
+    def available(self):
+        """Return True if the underlying framebuffer is open and usable."""
+        return self.fb is not None
 
     def draw_frame(self, img):
         if not self.fb:
@@ -126,6 +211,7 @@ class LokiDisplay:
         try:
             if self.fb:
                 self.fb.close()
+                self.fb = None
         except Exception:
             logger.exception("Error closing framebuffer")
 

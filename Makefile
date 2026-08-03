@@ -35,7 +35,7 @@ CROSS_HOST ?= orange-pi.local
 CROSS_PATH ?= /tmp
  
 ## Project Structure
-SOURCES := $(wildcard *.c)
+SOURCES := $(wildcard *.c) $(wildcard drivers/ai_client/*.c)
 HEADERS := $(wildcard *.h)
 OBJECTS := $(addprefix $(BUILD_DIR)/, $(SOURCES:.c=.o))
 DEPS := $(OBJECTS:.o=.d)
@@ -43,6 +43,13 @@ TARGET := loki_app
  
 ## Linker Settings
 LDFLAGS := -lm -lpthread
+
+## Optional libcurl for AI client (enabled when AI_ENABLED=1 at compile time)
+ifeq ($(AI_ENABLED),1)
+    CFLAGS  += -DAI_ENABLED=1
+    LDFLAGS += -lcurl
+    $(info [INFO] AI_ENABLED=1: building with libcurl support)
+endif
  
 ## Build Rules
 all: $(BUILD_DIR)/$(TARGET)
