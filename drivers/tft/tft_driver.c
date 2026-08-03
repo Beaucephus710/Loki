@@ -1,6 +1,11 @@
 /**
  * TFT Display Driver Implementation for ILI9488
- * Orange Pi Zero 2W - SPI0 Interface
+ * Raspberry Pi Zero 2W / Orange Pi Zero 2W - SPI0 Interface
+ *
+ * NOTE: The ILI9488 over a 4-wire SPI bus only supports 18-bit (RGB666) pixel
+ * format (COLMOD = 0x66).  Setting COLMOD = 0x55 (16-bit RGB565) has no effect
+ * and results in a blank or garbled display.  Pixel data is therefore always
+ * sent as three bytes per pixel (R8, G8, B8 – top 6 bits used by the panel).
  */
 
 #include "tft_driver.h"
@@ -21,6 +26,11 @@
 #define ILI9488_RAMWR           0x2C  /* Write to RAM */
 #define ILI9488_MADCTL          0x36  /* Memory access control */
 #define ILI9488_COLMOD          0x3A  /* Interface pixel format */
+#define ILI9488_PWCTRL1         0xC0  /* Power control 1 */
+#define ILI9488_PWCTRL2         0xC1  /* Power control 2 */
+#define ILI9488_VMCTRL1         0xC5  /* VCOM control 1 */
+#define ILI9488_PGAMCTRL        0xE0  /* Positive gamma control */
+#define ILI9488_NGAMCTRL        0xE1  /* Negative gamma control */
 
 /* ===== TFT STATE ===== */
 typedef struct {
@@ -42,13 +52,8 @@ static tft_context_t tft_ctx = {
  */
 static hal_status_t tft_write_command(uint8_t cmd)
 {
-    /* DC pin = LOW for command */
     gpio_set(GPIO_TFT_DC, GPIO_LEVEL_LOW);
-    
-    /* Send command byte */
-    hal_status_t status = spi_write(SPI_BUS_0, SPI0_CS0, &cmd, 1);
-    
-    return status;
+    return spi_write(SPI_BUS_0, SPI0_CS0, &cmd, 1);
 }
 
 /**
@@ -56,13 +61,8 @@ static hal_status_t tft_write_command(uint8_t cmd)
  */
 static hal_status_t tft_write_data(const uint8_t *data, uint32_t length)
 {
-    /* DC pin = HIGH for data */
     gpio_set(GPIO_TFT_DC, GPIO_LEVEL_HIGH);
-    
-    /* Send data bytes */
-    hal_status_t status = spi_write(SPI_BUS_0, SPI0_CS0, data, length);
-    
-    return status;
+    return spi_write(SPI_BUS_0, SPI0_CS0, data, length);
 }
 
 /**
@@ -74,17 +74,14 @@ static void delay_ms(uint32_t ms)
 }
 
 /**
- * Issue display reset
+ * Hardware reset
  */
 static void tft_reset(void)
 {
-    /* Pull RST low */
     gpio_set(GPIO_TFT_RST, GPIO_LEVEL_LOW);
     delay_ms(10);
-    
-    /* Pull RST high */
     gpio_set(GPIO_TFT_RST, GPIO_LEVEL_HIGH);
-    delay_ms(100);
+    delay_ms(120);
 }
 
 /**
@@ -92,23 +89,21 @@ static void tft_reset(void)
  */
 static hal_status_t tft_set_address_window(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1)
 {
-    uint8_t cmd_data[4];
+    uint8_t buf[4];
 
-    /* Set column address */
     tft_write_command(ILI9488_CASET);
-    cmd_data[0] = (x0 >> 8) & 0xFF;
-    cmd_data[1] = x0 & 0xFF;
-    cmd_data[2] = (x1 >> 8) & 0xFF;
-    cmd_data[3] = x1 & 0xFF;
-    tft_write_data(cmd_data, 4);
+    buf[0] = (x0 >> 8) & 0xFF;
+    buf[1] = x0 & 0xFF;
+    buf[2] = (x1 >> 8) & 0xFF;
+    buf[3] = x1 & 0xFF;
+    tft_write_data(buf, 4);
 
-    /* Set row address */
     tft_write_command(ILI9488_PASET);
-    cmd_data[0] = (y0 >> 8) & 0xFF;
-    cmd_data[1] = y0 & 0xFF;
-    cmd_data[2] = (y1 >> 8) & 0xFF;
-    cmd_data[3] = y1 & 0xFF;
-    tft_write_data(cmd_data, 4);
+    buf[0] = (y0 >> 8) & 0xFF;
+    buf[1] = y0 & 0xFF;
+    buf[2] = (y1 >> 8) & 0xFF;
+    buf[3] = y1 & 0xFF;
+    tft_write_data(buf, 4);
 
     return HAL_OK;
 }
@@ -121,19 +116,18 @@ hal_status_t tft_init(void)
         return HAL_OK;
     }
 
-    /* Initialize SPI0 for TFT */
+    /* Initialize SPI0 */
     spi_config_t spi_cfg = {
         .frequency = TFT_SPI_FREQ,
         .mode = SPI_MODE_0,
         .bits_per_word = 8,
         .bit_order = SPI_MSB_FIRST,
     };
-    
     if (spi_init(SPI_BUS_0, &spi_cfg) != HAL_OK) {
         return HAL_ERROR;
     }
 
-    /* Initialize GPIO for TFT control pins */
+    /* Configure GPIO control pins */
     gpio_config_t gpio_dc = {
         .pin = GPIO_TFT_DC,
         .mode = GPIO_MODE_OUTPUT,
@@ -148,7 +142,7 @@ hal_status_t tft_init(void)
     };
     gpio_configure(&gpio_rst);
 
-    /* Initialize PWM for backlight */
+    /* Initialize PWM backlight */
     pwm_config_t pwm_cfg = {
         .pin = GPIO_TFT_BL,
         .frequency = PWM_FREQ_DEFAULT,
@@ -157,37 +151,59 @@ hal_status_t tft_init(void)
     pwm_init(PWM_CHANNEL_0, &pwm_cfg);
     pwm_enable(PWM_CHANNEL_0);
 
-    /* Reset display */
+    /* Hardware reset */
     tft_reset();
 
-    /* Initialize ILI9488 controller */
-    
+    /* ---- ILI9488 full init sequence ---- */
+
     /* Software reset */
     tft_write_command(ILI9488_SWRESET);
-    delay_ms(50);
+    delay_ms(120);
 
     /* Sleep out */
     tft_write_command(ILI9488_SLPOUT);
-    delay_ms(100);
+    delay_ms(120);
 
-    /* Color mode: 16-bit RGB565 */
-    tft_write_command(ILI9488_COLMOD);
-    uint8_t colmod_data = 0x55;  /* 16-bit/pixel */
-    tft_write_data(&colmod_data, 1);
+    /* Power control 1: VRH = 4.60V */
+    tft_write_command(ILI9488_PWCTRL1);
+    { uint8_t d[] = {0x17, 0x15}; tft_write_data(d, 2); }
 
-    /* Memory access control */
+    /* Power control 2: SAP */
+    tft_write_command(ILI9488_PWCTRL2);
+    { uint8_t d[] = {0x41}; tft_write_data(d, 1); }
+
+    /* VCOM control */
+    tft_write_command(ILI9488_VMCTRL1);
+    { uint8_t d[] = {0x00, 0x12, 0x80}; tft_write_data(d, 3); }
+
+    /* Memory access control: default orientation (landscape) */
     tft_write_command(ILI9488_MADCTL);
-    uint8_t madctl_data = 0x00;  /* Default orientation */
-    tft_write_data(&madctl_data, 1);
+    { uint8_t d[] = {0x48}; tft_write_data(d, 1); }
+
+    /* Pixel format: 18bpp RGB666 — only valid SPI mode for ILI9488 */
+    tft_write_command(ILI9488_COLMOD);
+    { uint8_t d[] = {0x66}; tft_write_data(d, 1); }
+
+    /* Positive gamma */
+    tft_write_command(ILI9488_PGAMCTRL);
+    { uint8_t d[] = {0x00,0x03,0x09,0x08,0x16,0x0A,0x3F,0x78,
+                     0x4C,0x09,0x0A,0x08,0x16,0x1A,0x0F};
+      tft_write_data(d, 15); }
+
+    /* Negative gamma */
+    tft_write_command(ILI9488_NGAMCTRL);
+    { uint8_t d[] = {0x00,0x16,0x19,0x03,0x0F,0x05,0x32,0x45,
+                     0x46,0x04,0x0E,0x0D,0x35,0x37,0x0F};
+      tft_write_data(d, 15); }
 
     /* Display on */
     tft_write_command(ILI9488_DISPON);
     delay_ms(100);
 
-    /* Clear display */
+    /* Clear to black */
+    tft_ctx.initialized = 1;  /* must be set before tft_clear */
     tft_clear();
 
-    tft_ctx.initialized = 1;
     return HAL_OK;
 }
 
@@ -197,22 +213,32 @@ hal_status_t tft_write_pixels(uint16_t x, uint16_t y, uint16_t width, uint16_t h
     if (data == NULL || width == 0 || height == 0) {
         return HAL_INVALID_PARAM;
     }
-
     if (!tft_ctx.initialized) {
         return HAL_NOT_READY;
     }
 
-    /* Set address window */
     tft_set_address_window(x, y, x + width - 1, y + height - 1);
-
-    /* Write pixel data */
     tft_write_command(ILI9488_RAMWR);
-    
-    uint32_t pixel_count = width * height;
-    uint8_t *pixel_data = (uint8_t *)data;
-    uint32_t data_length = pixel_count * 2;  /* 2 bytes per pixel in RGB565 */
-    
-    tft_write_data(pixel_data, data_length);
+
+    /* Convert RGB565 pixel array to 18bpp RGB666 (3 bytes/pixel) */
+    uint32_t pixel_count = (uint32_t)width * height;
+    enum { CHUNK = 64 };
+    uint8_t buf[CHUNK * 3];
+    uint32_t i = 0;
+
+    while (i < pixel_count) {
+        uint32_t n = pixel_count - i;
+        if (n > CHUNK) n = CHUNK;
+        for (uint32_t j = 0; j < n; j++) {
+            color_t px = data[i + j];
+            buf[j * 3 + 0] = (uint8_t)((px >> 8) & 0xF8);  /* R */
+            buf[j * 3 + 1] = (uint8_t)((px >> 3) & 0xFC);  /* G */
+            buf[j * 3 + 2] = (uint8_t)((px << 3) & 0xF8);  /* B */
+        }
+        hal_status_t st = tft_write_data(buf, n * 3);
+        if (st != HAL_OK) return st;
+        i += n;
+    }
 
     return HAL_OK;
 }
@@ -222,29 +248,32 @@ hal_status_t tft_fill_rect(uint16_t x, uint16_t y, uint16_t width, uint16_t heig
     if (width == 0 || height == 0) {
         return HAL_INVALID_PARAM;
     }
-
     if (!tft_ctx.initialized) {
         return HAL_NOT_READY;
     }
 
-    /* Set address window */
     tft_set_address_window(x, y, x + width - 1, y + height - 1);
-
-    /* Write command and prepare for data */
     tft_write_command(ILI9488_RAMWR);
 
-    /* Send color data repeatedly */
-    uint32_t pixel_count = width * height;
-    
-    /* Convert color to bytes (RGB565: RRRRRGGGGGGBBBBBs) */
-    uint8_t color_bytes[2] = {
-        (color >> 8) & 0xFF,  /* High byte */
-        color & 0xFF,          /* Low byte */
-    };
+    /* Pre-fill a chunk buffer with the 18bpp encoding of the colour */
+    uint8_t r = (uint8_t)((color >> 8) & 0xF8);
+    uint8_t g = (uint8_t)((color >> 3) & 0xFC);
+    uint8_t b = (uint8_t)((color << 3) & 0xF8);
 
-    /* Write same color for all pixels */
-    for (uint32_t i = 0; i < pixel_count; i++) {
-        tft_write_data(color_bytes, 2);
+    enum { TFT_FILL_CHUNK_PIXELS = 256 };
+    uint8_t chunk[TFT_FILL_CHUNK_PIXELS * 3];
+    for (uint32_t i = 0; i < TFT_FILL_CHUNK_PIXELS; i++) {
+        chunk[i * 3 + 0] = r;
+        chunk[i * 3 + 1] = g;
+        chunk[i * 3 + 2] = b;
+    }
+
+    uint32_t remaining = (uint32_t)width * height;
+    while (remaining > 0) {
+        uint32_t pixels = (remaining > TFT_FILL_CHUNK_PIXELS) ? TFT_FILL_CHUNK_PIXELS : remaining;
+        hal_status_t st = tft_write_data(chunk, pixels * 3);
+        if (st != HAL_OK) return st;
+        remaining -= pixels;
     }
 
     return HAL_OK;
@@ -260,7 +289,6 @@ hal_status_t tft_set_brightness(uint8_t brightness)
     if (brightness > 100) {
         brightness = 100;
     }
-
     tft_ctx.brightness = brightness;
     return pwm_set_duty(PWM_CHANNEL_0, brightness);
 }
@@ -270,24 +298,20 @@ hal_status_t tft_set_rotation(uint8_t rotation)
     if (rotation > 3) {
         return HAL_INVALID_PARAM;
     }
-
     if (!tft_ctx.initialized) {
         return HAL_NOT_READY;
     }
 
     tft_ctx.rotation = rotation;
-
-    /* Set MADCTL register based on rotation */
     tft_write_command(ILI9488_MADCTL);
-    
+
     uint8_t madctl = 0x00;
     switch (rotation) {
-        case 0: madctl = 0x00; break;  /* 0° */
-        case 1: madctl = 0x60; break;  /* 90° */
-        case 2: madctl = 0xC0; break;  /* 180° */
-        case 3: madctl = 0xA0; break;  /* 270° */
+        case 0: madctl = 0x48; break;  /* 0°   – landscape default */
+        case 1: madctl = 0x28; break;  /* 90°  */
+        case 2: madctl = 0x88; break;  /* 180° */
+        case 3: madctl = 0xE8; break;  /* 270° */
     }
-    
     tft_write_data(&madctl, 1);
 
     return HAL_OK;
@@ -299,14 +323,9 @@ hal_status_t tft_deinit(void)
         return HAL_OK;
     }
 
-    /* Display off */
     tft_write_command(ILI9488_DISPOFF);
-
-    /* Disable backlight */
     pwm_disable(PWM_CHANNEL_0);
     pwm_deinit(PWM_CHANNEL_0);
-
-    /* Deinitialize SPI */
     spi_deinit(SPI_BUS_0);
 
     tft_ctx.initialized = 0;
