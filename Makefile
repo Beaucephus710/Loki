@@ -7,6 +7,12 @@
 # Requires: arm-linux-gnueabihf-gcc cross-compiler
 # Install on Ubuntu/Debian: sudo apt-get install gcc-arm-linux-gnueabihf
 
+## Config generation (single source of truth: config.toml)
+PYTHON     ?= python3
+CONFIG_GEN  := tools/gen_config.py
+CONFIG_TOML := config.toml
+CONFIG_HDRS := board_config.h pinout.h config.h
+
 ## Compiler Settings
 CC := $(shell command -v arm-linux-gnueabihf-gcc 2>/dev/null)
 ifeq ($(CC),)
@@ -51,8 +57,15 @@ ifeq ($(AI_ENABLED),1)
     $(info [INFO] AI_ENABLED=1: building with libcurl support)
 endif
  
-## Build Rules
-all: $(BUILD_DIR)/$(TARGET)
+## Generated config headers — regenerated whenever config.toml or the script changes
+$(CONFIG_HDRS): $(CONFIG_TOML) $(CONFIG_GEN)
+	$(PYTHON) $(CONFIG_GEN)
+
+## Convenience target to regenerate headers without building
+config: $(CONFIG_HDRS)
+
+## Build Rules — generated headers must exist before any .c is compiled
+all: $(CONFIG_HDRS) $(BUILD_DIR)/$(TARGET)
  
 $(BUILD_DIR)/$(TARGET): $(OBJECTS)
 	@mkdir -p $(BUILD_DIR)
@@ -60,7 +73,7 @@ $(BUILD_DIR)/$(TARGET): $(OBJECTS)
 	@echo "[✓] Successfully built $(TARGET) ($(BUILD_DIR))"
 	@echo "[✓] Binary size: $$(ls -lh $@ | awk '{print $$5}')"
  
-$(BUILD_DIR)/%.o: %.c
+$(BUILD_DIR)/%.o: %.c $(CONFIG_HDRS)
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -MMD -MP -c $< -o $@
 	@echo "[CC] $<"
@@ -128,4 +141,4 @@ info:
 	@echo "║ Target path: $(CROSS_PATH)"
 	@echo "╚════════════════════════════════════════╝"
  
-.PHONY: all clean clean-all install run test docs analyze size info
+.PHONY: all config clean clean-all install run test docs analyze size info
