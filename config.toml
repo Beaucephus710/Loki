@@ -10,14 +10,27 @@ ascii_mode = true
 
 
 ##############################################
+# DISPLAY (top-level – used by LokiConfig.display())
+##############################################
+[display]
+width = 480
+height = 320
+device = "/dev/fb1"
+pixel_format = "RGB565"
+animation = "boot_sequence"
+
+
+##############################################
 # PLUGIN: AI BRAIN
 ##############################################
 [plugins.ai_brain]
 enabled = true
 use_openai = false
+api_key = ""
+api_url = "https://api.openai.com/v1/chat/completions"
 model = "gpt-4o-mini"
+timeout = 30
 auto_reply = false
-learning = false
 debug = false
 
 

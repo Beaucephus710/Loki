@@ -60,6 +60,16 @@
 /* ===== PULL-UP RESISTORS ===== */
 #define I2C_PULLUP_OHM    4700  /* 4.7 kΩ for I2C SDA/SCL */
 
+/* ===== AI API CONFIGURATION ===== */
+/* Set AI_ENABLED to 1 and provide AI_API_KEY to activate AI features       */
+/* Compile with -DAI_ENABLED=1 -DAI_API_KEY=\"sk-...\" for runtime override */
+#define AI_ENABLED              0       /* 0 = disabled, 1 = enabled        */
+#define AI_API_URL              "https://api.openai.com/v1/chat/completions"
+#define AI_API_KEY              ""      /* Insert your API key here          */
+#define AI_MODEL                "gpt-4o-mini"
+#define AI_MAX_RESPONSE_LEN     2048    /* Response buffer size (bytes)      */
+#define AI_TIMEOUT_SECONDS      30      /* HTTP request timeout              */
+
 /* ===== ERROR HANDLING ===== */
 #define ENABLE_ERROR_LOGGING  1
 #define ERROR_LOG_BUFFER_SIZE 256
