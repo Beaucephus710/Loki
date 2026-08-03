@@ -137,6 +137,8 @@ def main():
         if not plugin_class:
             continue
         cfg = plugin_configs.get(name, {})
+        if name == "loki_animation":
+            cfg = {"plugin": cfg, "dragon": config.get("dragon", {})}
         try:
             instance = plugin_class(cfg)
             plugins[name] = instance

@@ -8,3 +8,21 @@ venv/
 *.save
 .vscode/
 .idea/
+
+# Generated previews and animation outputs
+loki_preview.png
+*.gif
+
+# Dragon runtime state files
+dragon_state.json
+*.dragon_state.json
+*.tmp
+
+# Build artifacts
+build/
+*.o
+*.d
+*.so
+
+# Python cache artifacts
+**/__pycache__/

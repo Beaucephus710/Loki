@@ -107,6 +107,49 @@ make clean
 
 If your environment is missing the ARM cross-compiler, builds that depend on `arm-linux-gnueabihf-gcc` will fail until the toolchain is installed.
 
+## Dragon runtime on Raspberry Pi / Debian Bookworm
+
+Use a **single clean clone** (do not clone another Loki repo inside an existing `~/Loki` checkout):
+
+```bash
+cd ~
+rm -rf Loki
+git clone https://github.com/Fomorianshifter/Loki.git
+cd Loki
+```
+
+Install runtime dependencies:
+
+```bash
+sudo apt update
+sudo apt install -y git python3-pil python3-toml
+```
+
+### Headless preview workflow (no display attached)
+
+This prints dragon status and writes a PNG preview without requiring `/dev/fb1`:
+
+```bash
+python3 -m dragon.demo --status --png loki_preview.png
+```
+
+Optional interaction + GIF preview:
+
+```bash
+python3 -m dragon.demo --care talk play feed --png loki_preview.png --gif loki_preview.gif
+```
+
+### TFT/framebuffer workflow
+
+1. Configure framebuffer settings in `[display]` and dragon visuals in `[dragon.animation]` in `config.toml`.
+2. Start Loki:
+
+```bash
+python3 main.py
+```
+
+If no physical framebuffer is connected or `/dev/fb1` is unavailable, Loki falls back safely and keeps running.
+
 ## Raspberry Pi Zero W installation (step-by-step)
 
 Use this path if you want to run Loki directly on a Raspberry Pi Zero W.

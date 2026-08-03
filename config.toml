@@ -175,3 +175,45 @@ password = ""
 enabled = false
 api_key = ""
 auto_upload = false
+
+
+##############################################
+# DRAGON — GROWTH, MOOD & ANIMATION
+##############################################
+
+[dragon]
+enabled = true
+state_path = "~/.local/share/loki/dragon_state.json"
+persist = true
+
+[dragon.xp]
+hatchling = 5
+juvenile = 25
+adult = 75
+care = 2
+talk = 1
+play = 2
+feed = 1
+rest = 1
+
+[dragon.mood]
+happy = 80
+content = 55
+sleepy = 30
+care = 5
+talk = 3
+play = 6
+feed = 4
+rest = 2
+decay_after_hours = 0.25
+decay_hunger_per_hour = 4
+decay_energy_per_hour = 3
+decay_mood_per_hour = 2
+
+[dragon.animation]
+enabled = true
+width = 480
+height = 320
+fps = 10
+background = [12, 18, 38]
+style = "default"
