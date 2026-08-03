@@ -13,6 +13,7 @@ import os
 import time
 import traceback
 from pathlib import Path
+from web_ui import ConfigWebUI
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -20,7 +21,10 @@ logger = logging.getLogger("loki")
 
 # Configurable values
 PLUGINS_DIR = "plugins"
-MAIN_LOOP_SLEEP = 0.1  # seconds
+MAIN_LOOP_SLEEP = 0.0167  # seconds (60 FPS = ~16.67ms per frame for responsive UI)
+
+def get_config_path():
+    return Path(os.environ.get("LOKI_CONFIG_PATH", str(Path(__file__).with_name("config.toml"))))
 
 
 def discover_plugins():
@@ -154,7 +158,7 @@ def main():
     # Main loop: aggregate plugin states and call on_tick
     shared_state = {}
     try:
-        logger.info("Entering main loop")
+        logger.info("Entering main loop (60 FPS)")
         while True:
             shared_state.clear()
             for name, plugin in plugins.items():
@@ -182,6 +186,8 @@ def main():
                 display_obj.close()
         except Exception:
             logger.debug("Error closing display: %s", traceback.format_exc())
+        if web_ui:
+            web_ui.stop()
         logger.info("Shutdown complete")
 
 

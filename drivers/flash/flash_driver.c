@@ -27,7 +27,7 @@ hal_status_t flash_init(void)
         .bits_per_word = 8,
         .bit_order = SPI_MSB_FIRST,
     };
-    
+
     if (spi_init(SPI_BUS_2, &spi_cfg) != HAL_OK) {
         return HAL_ERROR;
     }
@@ -61,13 +61,13 @@ hal_status_t flash_read(uint32_t address, uint8_t *buffer, uint32_t length)
 
     /* Read data command + 24-bit address + data */
     uint8_t cmd_packet[4 + 256];  /* Max page size is 256 bytes */
-    
+
     cmd_packet[0] = W25Q_CMD_READ_DATA;
     cmd_packet[1] = (address >> 16) & 0xFF;
     cmd_packet[2] = (address >> 8) & 0xFF;
     cmd_packet[3] = address & 0xFF;
 
-    return spi_transfer(SPI_BUS_2, SPI2_CS0, 
+    return spi_transfer(SPI_BUS_2, SPI2_CS0,
                        cmd_packet, 4,
                        buffer, length);
 }

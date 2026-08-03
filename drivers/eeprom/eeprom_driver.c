@@ -31,7 +31,7 @@ hal_status_t eeprom_init(void)
         .frequency = EEPROM_I2C_FREQ,
         .address_bits = 7,
     };
-    
+
     if (i2c_init(I2C_BUS_0, &i2c_cfg) != HAL_OK) {
         return HAL_ERROR;
     }
@@ -56,7 +56,7 @@ hal_status_t eeprom_read(uint8_t address, uint8_t *buffer, uint16_t length)
 
     /* Send address byte, then read data */
     uint8_t addr[1] = {address};
-    
+
     return i2c_write_read(I2C_BUS_0, EEPROM_ADDR,
                          addr, 1,
                          buffer, length);
@@ -78,7 +78,7 @@ hal_status_t eeprom_write(uint8_t address, const uint8_t *buffer, uint16_t lengt
 
     /* FT24C02A page size is 8 bytes */
     /* Must write in page-aligned chunks */
-    
+
     uint16_t bytes_written = 0;
     while (bytes_written < length) {
         uint16_t chunk_size = EEPROM_PAGE_SIZE;
@@ -98,7 +98,7 @@ hal_status_t eeprom_write(uint8_t address, const uint8_t *buffer, uint16_t lengt
         memcpy(&write_packet[1], &buffer[bytes_written], chunk_size);
 
         /* Send address + data */
-        hal_status_t status = i2c_write(I2C_BUS_0, EEPROM_ADDR, 
+        hal_status_t status = i2c_write(I2C_BUS_0, EEPROM_ADDR,
                                        write_packet, 1 + chunk_size);
         if (status != HAL_OK) {
             return status;

@@ -12,8 +12,8 @@ class Plugin:
         self.config = config or {}
         self.enabled = self.config.get("enabled", False)
 
-        # API key from config.toml
-        self.api_key = self.config.get("api_key", "")
+        # Secrets stay out of the tracked configuration file.
+        self.api_key = os.environ.get("LOKI_WPA_SEC_API_KEY", "")
 
         # Behavior toggles
         self.auto_fetch = self.config.get("auto_fetch", False)

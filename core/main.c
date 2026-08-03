@@ -1,7 +1,7 @@
 /**
  * @file main.c
  * @brief Loki - Orange Pi Zero 2W Interactive Display System
- * 
+ *
  * Main entry point and example usage of the Loki board system.
  * Demonstrates hardware initialization, device testing, and communication.
  */
@@ -38,7 +38,7 @@ static void handle_signal(int sig)
 /* ===== EXAMPLE: TFT DISPLAY TEST ===== */
 /**
  * @brief Test TFT display functionality
- * 
+ *
  * Demonstrates display clearing and drawing colored rectangles.
  */
 static void test_tft_display(void)
@@ -62,7 +62,7 @@ static void test_tft_display(void)
 /* ===== EXAMPLE: EEPROM READ/WRITE TEST ===== */
 /**
  * @brief Test EEPROM read/write with verification
- * 
+ *
  * Writes test data to EEPROM, reads it back, and verifies integrity.
  */
 static void test_eeprom(void)
@@ -74,7 +74,7 @@ static void test_eeprom(void)
 
     /* Write to EEPROM with retry logic */
     hal_status_t status = RETRY(eeprom_write(0, write_data, 8), RETRY_BALANCED);
-    
+
     if (status != HAL_OK) {
         LOG_ERROR("Failed to write EEPROM after retries");
         return;
@@ -85,7 +85,7 @@ static void test_eeprom(void)
 
     /* Read from EEPROM */
     status = RETRY(eeprom_read(0, read_data, 8), RETRY_BALANCED);
-    
+
     if (status != HAL_OK) {
         LOG_ERROR("Failed to read EEPROM");
         return;
@@ -106,7 +106,7 @@ static void test_eeprom(void)
 /* ===== EXAMPLE: FLASH MEMORY TEST ===== */
 /**
  * @brief Test Flash memory JEDEC ID
- * 
+ *
  * Reads and verifies the JEDEC ID from the W25Q40 Flash chip.
  */
 static void test_flash(void)
@@ -115,10 +115,10 @@ static void test_flash(void)
 
     uint8_t jedec_id[3];
     hal_status_t status = RETRY(flash_get_jedec_id(jedec_id), RETRY_BALANCED);
-    
+
     if (status == HAL_OK) {
         LOG_INFO("Flash JEDEC ID: 0x%02X%02X%02X", jedec_id[0], jedec_id[1], jedec_id[2]);
-        
+
         if ((jedec_id[0] << 16 | jedec_id[1] << 8 | jedec_id[2]) == FLASH_JEDEC_ID) {
             LOG_INFO("✓ Flash identification verified");
         } else {
@@ -132,7 +132,7 @@ static void test_flash(void)
 /* ===== EXAMPLE: FLIPPER UART TEST ===== */
 /**
  * @brief Test Flipper UART connectivity
- * 
+ *
  * Checks if Flipper is connected and responsive.
  */
 static void test_flipper_communication(void)
@@ -149,9 +149,9 @@ static void test_flipper_communication(void)
 /* ===== MAIN APPLICATION ===== */
 /**
  * @brief Main application entry point
- * 
+ *
  * Initializes the system, runs hardware tests, and waits for user input.
- * 
+ *
  * @param[in] argc Argument count
  * @param[in] argv Argument values
  * @return EXIT_SUCCESS on normal shutdown, EXIT_FAILURE on error
@@ -166,7 +166,7 @@ int main(int argc, char *argv[])
 
     /* Initialize logging system */
     log_init();
-    
+
 #ifdef DEBUG
     log_set_level(LOG_DEBUG);
     LOG_DEBUG("Debug mode enabled");
@@ -212,9 +212,9 @@ int main(int argc, char *argv[])
         /* Check for Flipper messages */
         if (flipper_available() > 0) {
             flipper_message_t msg = {0};
-            
+
             if (flipper_receive_message(&msg, 100) == HAL_OK) {
-                LOG_INFO("Received Flipper command: 0x%02X (length: %d)", 
+                LOG_INFO("Received Flipper command: 0x%02X (length: %d)",
                         msg.cmd, msg.length);
 
                 /* Send acknowledgment */
@@ -239,9 +239,9 @@ int main(int argc, char *argv[])
     LOG_INFO("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     LOG_INFO("Initiating system shutdown...");
     system_shutdown();
-    
+
     LOG_INFO("Loki system terminated successfully");
     fprintf(stdout, "\n✓ Goodbye!\n");
-    
+
     return EXIT_SUCCESS;
 }

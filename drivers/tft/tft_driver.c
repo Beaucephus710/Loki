@@ -37,12 +37,16 @@ typedef struct {
     uint8_t initialized;
     uint8_t rotation;
     uint8_t brightness;
+    uint16_t width;
+    uint16_t height;
 } tft_context_t;
 
 static tft_context_t tft_ctx = {
     .initialized = 0,
     .rotation = TFT_ROTATION,
     .brightness = TFT_BRIGHTNESS,
+    .width = TFT_WIDTH,
+    .height = TFT_HEIGHT,
 };
 
 /* ===== LOCAL HELPER FUNCTIONS ===== */
@@ -106,6 +110,35 @@ static hal_status_t tft_set_address_window(uint16_t x0, uint16_t y0, uint16_t x1
     tft_write_data(buf, 4);
 
     return HAL_OK;
+}
+
+static bool tft_clip_rect(uint16_t *x, uint16_t *y, uint16_t *width, uint16_t *height)
+{
+    uint16_t x0 = *x;
+    uint16_t y0 = *y;
+    uint32_t x1 = (uint32_t)x0 + (uint32_t)(*width);
+    uint32_t y1 = (uint32_t)y0 + (uint32_t)(*height);
+
+    if (x0 >= tft_ctx.width || y0 >= tft_ctx.height) {
+        return false;
+    }
+
+    if (x1 > tft_ctx.width) {
+        x1 = tft_ctx.width;
+    }
+    if (y1 > tft_ctx.height) {
+        y1 = tft_ctx.height;
+    }
+
+    uint16_t new_w = (uint16_t)(x1 - x0);
+    uint16_t new_h = (uint16_t)(y1 - y0);
+    if (new_w == 0 || new_h == 0) {
+        return false;
+    }
+
+    *width = new_w;
+    *height = new_h;
+    return true;
 }
 
 /* ===== PUBLIC IMPLEMENTATION ===== */
@@ -200,8 +233,11 @@ hal_status_t tft_init(void)
     tft_write_command(ILI9488_DISPON);
     delay_ms(100);
 
+    /* Enable the driver before setting rotation or clearing the screen. */
+    tft_ctx.initialized = 1;
+    tft_set_rotation(tft_ctx.rotation);
+
     /* Clear to black */
-    tft_ctx.initialized = 1;  /* must be set before tft_clear */
     tft_clear();
 
     return HAL_OK;
@@ -217,27 +253,66 @@ hal_status_t tft_write_pixels(uint16_t x, uint16_t y, uint16_t width, uint16_t h
         return HAL_NOT_READY;
     }
 
+    uint16_t orig_x = x;
+    uint16_t orig_y = y;
+    uint16_t orig_w = width;
+    uint16_t orig_h = height;
+
+    if (!tft_clip_rect(&x, &y, &width, &height)) {
+        return HAL_OK;
+    }
+
     tft_set_address_window(x, y, x + width - 1, y + height - 1);
     tft_write_command(ILI9488_RAMWR);
 
     /* Convert RGB565 pixel array to 18bpp RGB666 (3 bytes/pixel) */
-    uint32_t pixel_count = (uint32_t)width * height;
+    uint32_t pixel_count = (uint32_t)width * (uint32_t)height;
     enum { CHUNK = 64 };
     uint8_t buf[CHUNK * 3];
-    uint32_t i = 0;
 
-    while (i < pixel_count) {
-        uint32_t n = pixel_count - i;
-        if (n > CHUNK) n = CHUNK;
-        for (uint32_t j = 0; j < n; j++) {
-            color_t px = data[i + j];
-            buf[j * 3 + 0] = (uint8_t)((px >> 8) & 0xF8);  /* R */
-            buf[j * 3 + 1] = (uint8_t)((px >> 3) & 0xFC);  /* G */
-            buf[j * 3 + 2] = (uint8_t)((px << 3) & 0xF8);  /* B */
+    if (x == orig_x && y == orig_y && width == orig_w && height == orig_h) {
+        uint32_t i = 0;
+        while (i < pixel_count) {
+            uint32_t n = pixel_count - i;
+            if (n > CHUNK) {
+                n = CHUNK;
+            }
+            for (uint32_t j = 0; j < n; j++) {
+                color_t px = data[i + j];
+                buf[j * 3 + 0] = (uint8_t)((px >> 8) & 0xF8);
+                buf[j * 3 + 1] = (uint8_t)((px >> 3) & 0xFC);
+                buf[j * 3 + 2] = (uint8_t)((px << 3) & 0xF8);
+            }
+            hal_status_t st = tft_write_data(buf, n * 3);
+            if (st != HAL_OK) {
+                return st;
+            }
+            i += n;
         }
-        hal_status_t st = tft_write_data(buf, n * 3);
-        if (st != HAL_OK) return st;
-        i += n;
+        return HAL_OK;
+    }
+
+    for (uint32_t row = 0; row < height; row++) {
+        uint32_t src_row = (uint32_t)row + (uint32_t)(y - orig_y);
+        uint32_t src_col = (uint32_t)(x - orig_x);
+        const color_t *row_data = data + (src_row * (uint32_t)orig_w) + src_col;
+        uint32_t remaining = width;
+
+        while (remaining > 0) {
+            uint32_t pixels = (remaining > CHUNK) ? CHUNK : remaining;
+            for (uint32_t j = 0; j < pixels; j++) {
+                color_t px = row_data[j];
+                buf[j * 3 + 0] = (uint8_t)((px >> 8) & 0xF8);
+                buf[j * 3 + 1] = (uint8_t)((px >> 3) & 0xFC);
+                buf[j * 3 + 2] = (uint8_t)((px << 3) & 0xF8);
+            }
+            hal_status_t st = tft_write_data(buf, pixels * 3);
+            if (st != HAL_OK) {
+                return st;
+            }
+            row_data += pixels;
+            remaining -= pixels;
+        }
     }
 
     return HAL_OK;
@@ -250,6 +325,10 @@ hal_status_t tft_fill_rect(uint16_t x, uint16_t y, uint16_t width, uint16_t heig
     }
     if (!tft_ctx.initialized) {
         return HAL_NOT_READY;
+    }
+
+    if (!tft_clip_rect(&x, &y, &width, &height)) {
+        return HAL_OK;
     }
 
     tft_set_address_window(x, y, x + width - 1, y + height - 1);
@@ -268,7 +347,7 @@ hal_status_t tft_fill_rect(uint16_t x, uint16_t y, uint16_t width, uint16_t heig
         chunk[i * 3 + 2] = b;
     }
 
-    uint32_t remaining = (uint32_t)width * height;
+    uint32_t remaining = (uint32_t)width * (uint32_t)height;
     while (remaining > 0) {
         uint32_t pixels = (remaining > TFT_FILL_CHUNK_PIXELS) ? TFT_FILL_CHUNK_PIXELS : remaining;
         hal_status_t st = tft_write_data(chunk, pixels * 3);
@@ -281,7 +360,7 @@ hal_status_t tft_fill_rect(uint16_t x, uint16_t y, uint16_t width, uint16_t heig
 
 hal_status_t tft_clear(void)
 {
-    return tft_fill_rect(0, 0, TFT_WIDTH, TFT_HEIGHT, COLOR_BLACK);
+    return tft_fill_rect(0, 0, tft_ctx.width, tft_ctx.height, COLOR_BLACK);
 }
 
 hal_status_t tft_set_brightness(uint8_t brightness)
@@ -301,7 +380,6 @@ hal_status_t tft_set_rotation(uint8_t rotation)
     if (!tft_ctx.initialized) {
         return HAL_NOT_READY;
     }
-
     tft_ctx.rotation = rotation;
     tft_write_command(ILI9488_MADCTL);
 
@@ -313,6 +391,14 @@ hal_status_t tft_set_rotation(uint8_t rotation)
         case 3: madctl = 0xE8; break;  /* 270° */
     }
     tft_write_data(&madctl, 1);
+
+    if (rotation == 1 || rotation == 3) {
+        tft_ctx.width = TFT_HEIGHT;
+        tft_ctx.height = TFT_WIDTH;
+    } else {
+        tft_ctx.width = TFT_WIDTH;
+        tft_ctx.height = TFT_HEIGHT;
+    }
 
     return HAL_OK;
 }

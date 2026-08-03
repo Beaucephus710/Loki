@@ -1,153 +1,3 @@
-hal_status_t sdcard_init(void)
-{
-    if (sdcard_ctx.initialized) {
-        return HAL_OK;
-    }
-
-    /* Initialize SPI1 for SD card */
-    spi_config_t spi_cfg = {
-        .frequency = SD_SPI_FREQ,
-        .mode = SPI_MODE_0,
-        .bits_per_word = 8,
-        .bit_order = SPI_MSB_FIRST,
-    };
-    
-    if (spi_init(SPI_BUS_1, &spi_cfg) != HAL_OK) {
-        return HAL_ERROR;
-    }
-
-    /* Initialize SD card via SPI */
-    
-    /* Send CMD0 (GO_IDLE_STATE) */
-    sdcard_send_command(SD_CMD0, 0);
-    
-    uint8_t response[5];
-    sdcard_read_response(response, 1);
-
-    /* Send CMD8 (SEND_IF_COND) for voltage validation */
-    sdcard_send_command(SD_CMD8, 0x1AA);
-    sdcard_read_response(response, 5);
-
-    /* Send CMD55 + ACMD41 (SD_SEND_OP_COND) */
-    uint32_t timeout = 0;
-    while (timeout < 1000) {
-        sdcard_send_command(SD_CMD55, 0);
-        sdcard_read_response(response, 1);
-        
-        sdcard_send_command(SD_ACMD41, 0x40000000);
-        sdcard_read_response(response, 1);
-        
-        if ((response[0] & 0x80) == 0) {
-            break;
-        }
-        timeout++;
-    }
-
-    sdcard_ctx.capacity = SD_SECTOR_SIZE * 1024;  /* Default 512KB sectors */
-    sdcard_ctx.initialized = 1;
-    
-    return HAL_OK;
-}
-
-hal_status_t sdcard_read_sector(uint32_t sector, uint16_t count, uint8_t *buffer)
-{
-    if (buffer == NULL || count == 0) {
-        return HAL_INVALID_PARAM;
-    }
-
-    if (!sdcard_ctx.initialized) {
-        return HAL_NOT_READY;
-    }
-
-    /* Send CMD17 (READ_SINGLE_BLOCK) */
-    sdcard_send_command(SD_CMD17, sector * SD_SECTOR_SIZE);
-    
-    uint8_t response[1];
-    sdcard_read_response(response, 1);
-
-    /* Wait for data token */
-    uint8_t token = 0xFF;
-    for (int i = 0; i < SD_RESPONSE_TIMEOUT; i++) {
-        sdcard_read_response(&token, 1);
-        if (token == 0xFE) {
-            break;
-        }
-    }
-
-    if (token != 0xFE) {
-        return HAL_TIMEOUT;
-    }
-
-    /* Read sector data */
-    sdcard_read_response(buffer, SD_SECTOR_SIZE);
-
-    /* Read CRC (2 bytes) */
-    uint8_t crc[2];
-    sdcard_read_response(crc, 2);
-
-    return HAL_OK;
-}
-
-hal_status_t sdcard_write_sector(uint32_t sector, uint16_t count, const uint8_t *buffer)
-{
-    if (buffer == NULL || count == 0) {
-        return HAL_INVALID_PARAM;
-    }
-
-    if (!sdcard_ctx.initialized) {
-        return HAL_NOT_READY;
-    }
-
-    /* Send CMD24 (WRITE_SINGLE_BLOCK) */
-    sdcard_send_command(SD_CMD24, sector * SD_SECTOR_SIZE);
-
-    uint8_t response[1];
-    sdcard_read_response(response, 1);
-
-    /* Send data token */
-    uint8_t token = 0xFE;
-    spi_write(SPI_BUS_1, SPI1_CS0, &token, 1);
-
-    /* Write sector data */
-    spi_write(SPI_BUS_1, SPI1_CS0, buffer, SD_SECTOR_SIZE);
-
-    /* Send dummy CRC */
-    uint8_t crc[2] = {0xFF, 0xFF};
-    spi_write(SPI_BUS_1, SPI1_CS0, crc, 2);
-
-    /* Wait for write completion */
-    uint8_t status = 0xFF;
-    for (int i = 0; i < SD_RESPONSE_TIMEOUT && status == 0xFF; i++) {
-        sdcard_read_response(&status, 1);
-    }
-
-    return HAL_OK;
-}
-
-hal_status_t sdcard_get_capacity(uint32_t *capacity)
-{
-    if (capacity == NULL) {
-        return HAL_INVALID_PARAM;
-    }
-
-    if (!sdcard_ctx.initialized) {
-        return HAL_NOT_READY;
-    }
-
-    *capacity = sdcard_ctx.capacity;
-    return HAL_OK;
-}
-
-hal_status_t sdcard_deinit(void)
-{
-    if (!sdcard_ctx.initialized) {
-        return HAL_OK;
-    }
-
-    spi_deinit(SPI_BUS_1);
-    sdcard_ctx.initialized = 0;
-    return HAL_OK;
-}
 /**
  * SD Card Driver Implementation for push-pull 6-pin module
  * Orange Pi Zero 2W - SPI1 Interface
@@ -186,6 +36,27 @@ static sdcard_context_t sdcard_ctx = {
 /* ===== LOCAL HELPER FUNCTIONS ===== */
 
 /**
+ * Calculate CRC7 for SD command packet bytes
+ * Uses polynomial x^7 + x^3 + 1 (0x09), with stop bit set in LSB
+ */
+static uint8_t sdcard_crc7(const uint8_t *data, uint8_t len)
+{
+    uint8_t crc = 0;
+    for (uint8_t i = 0; i < len; i++) {
+        uint8_t byte = data[i];
+        for (int bit = 0; bit < 8; bit++) {
+            crc <<= 1;
+            if ((byte ^ crc) & 0x80) {
+                crc ^= 0x09;
+            }
+            byte <<= 1;
+        }
+        crc &= 0x7F;
+    }
+    return (crc << 1) | 1; /* Append stop bit */
+}
+
+/**
  * Send command to SD card
  */
 static hal_status_t sdcard_send_command(uint8_t cmd, uint32_t arg)
@@ -197,7 +68,7 @@ static hal_status_t sdcard_send_command(uint8_t cmd, uint32_t arg)
     cmd_packet[2] = (arg >> 16) & 0xFF;
     cmd_packet[3] = (arg >> 8) & 0xFF;
     cmd_packet[4] = arg & 0xFF;                /* Argument LSB */
-    cmd_packet[5] = 0x95;                      /* CRC */
+    cmd_packet[5] = sdcard_crc7(cmd_packet, 5); /* CRC7 with stop bit */
 
     return spi_write(SPI_BUS_1, SPI1_CS0, cmd_packet, 6);
 }
@@ -242,9 +113,25 @@ hal_status_t sdcard_init(void)
     sdcard_send_command(SD_CMD8, 0x1AA);
     sdcard_read_response(response, 5);
 
-    /* Send CMD55 + ACMD41 (SD_SEND_OP_COND) */
+    /* Send CMD55 + ACMD41 (SD_SEND_OP_COND)
+     * OPTIMIZATION: Add 10ms delay between attempts + reduce iterations
+     * 
+     * Before:
+     *   - 1000 loop iterations with NO sleep
+     *   - CPU spins at 100% continuously
+     *   - Improper timing for SD card readiness
+     *   - Can cause initialization failures or timeout hangs
+     * 
+     * After:
+     *   - 100 loop iterations with 10ms sleep between each
+     *   - Total max wait time: ~1000ms (sufficient for all SD cards)
+     *   - CPU yields between polls
+     *   - Proper compliance with SD card initialization timing
+     * 
+     * Impact: SD card initialization is more reliable and CPU-friendly
+     */
     uint32_t timeout = 0;
-    while (timeout < 1000) {
+    while (timeout < 100) {
         sdcard_send_command(SD_CMD55, 0);
         sdcard_read_response(response, 1);
         
@@ -252,8 +139,11 @@ hal_status_t sdcard_init(void)
         sdcard_read_response(response, 1);
         
         if ((response[0] & 0x80) == 0) {
-            break;
+            break;  /* Card ready */
         }
+        
+        /* Sleep for 10ms before next initialization attempt */
+        usleep(10000);
         timeout++;
     }
 
@@ -279,13 +169,22 @@ hal_status_t sdcard_read_sector(uint32_t sector, uint16_t count, uint8_t *buffer
     uint8_t response[1];
     sdcard_read_response(response, 1);
 
-    /* Wait for data token */
+    /* Wait for data token using batched reads (16 bytes per iteration) */
+    #define SD_TOKEN_BATCH_SIZE 16
     uint8_t token = 0xFF;
-    for (int i = 0; i < SD_RESPONSE_TIMEOUT; i++) {
-        sdcard_read_response(&token, 1);
+    uint8_t batch[SD_TOKEN_BATCH_SIZE];
+    for (int i = 0; i < (SD_RESPONSE_TIMEOUT / SD_TOKEN_BATCH_SIZE); i++) {
+        sdcard_read_response(batch, SD_TOKEN_BATCH_SIZE);
+        for (int j = 0; j < SD_TOKEN_BATCH_SIZE; j++) {
+            if (batch[j] == 0xFE) {
+                token = 0xFE;
+                break;
+            }
+        }
         if (token == 0xFE) {
             break;
         }
+        usleep(100);
     }
 
     if (token != 0xFE) {
@@ -329,10 +228,21 @@ hal_status_t sdcard_write_sector(uint32_t sector, uint16_t count, const uint8_t 
     uint8_t crc[2] = {0xFF, 0xFF};
     spi_write(SPI_BUS_1, SPI1_CS0, crc, 2);
 
-    /* Wait for write completion */
+    /* Wait for data response token */
     uint8_t status = 0xFF;
     for (int i = 0; i < SD_RESPONSE_TIMEOUT && status == 0xFF; i++) {
         sdcard_read_response(&status, 1);
+        usleep(100);
+    }
+
+    /* Check for timeout waiting for response */
+    if (status == 0xFF) {
+        return HAL_TIMEOUT;
+    }
+
+    /* Check data accepted response: bits [4:1] must be 0b0101 (0x05 after masking 0x1F) */
+    if ((status & 0x1F) != 0x05) {
+        return HAL_ERROR;
     }
 
     return HAL_OK;
