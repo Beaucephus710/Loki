@@ -1,21 +1,45 @@
-# Loki Build Configuration for Orange Pi Zero 2W
-# 
+# Loki Build Configuration
+#
 # PLATFORM NOTES:
+# - Target: Raspberry Pi (ARM) with RS-485 HAT
 # - Linux/Mac: Use this Makefile directly with `make` command
 # - Windows: Use build.bat or build.ps1 script instead
 #
-# Requires: arm-linux-gnueabihf-gcc cross-compiler
-# Install on Ubuntu/Debian: sudo apt-get install gcc-arm-linux-gnueabihf
+# Cross-compiler install (Ubuntu/Debian):
+#   sudo apt-get install gcc-arm-linux-gnueabihf
+# Native build (when running directly on the Pi):
+#   make  (will use gcc if cross-compiler is absent)
+
+.DEFAULT_GOAL := all
+
+## Config generation (single source of truth: config.toml)
+PYTHON      ?= python3
+CONFIG_GEN  := tools/gen_config.py
+CONFIG_TOML := config.toml
+CONFIG_HDRS := board_config.h pinout.h config.h
 
 ## Compiler Settings
-CC := $(shell command -v arm-linux-gnueabihf-gcc 2>/dev/null)
-ifeq ($(CC),)
-CC := gcc
+## On ARM hosts (e.g. Raspberry Pi), build natively with safe defaults.
+## On non-ARM hosts, prefer the ARM cross-compiler when available.
+HOST_ARCH := $(shell uname -m)
+USING_CROSS := 0
+ifeq ($(filter arm% aarch64%,$(HOST_ARCH)),)
+    ifneq ($(shell which arm-linux-gnueabihf-gcc 2>/dev/null),)
+        CC          := arm-linux-gnueabihf-gcc
+        BASE_CFLAGS := -Wall -Wextra -march=armv7-a -mtune=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard
+        USING_CROSS := 1
+    else
+        CC          := gcc
+        BASE_CFLAGS := -Wall -Wextra
+        $(info [WARN] arm-linux-gnueabihf-gcc not found, using native gcc)
+    endif
+else
+    CC          := gcc
+    BASE_CFLAGS := -Wall -Wextra
+    $(info [INFO] Native ARM host detected ($(HOST_ARCH)); using gcc defaults)
 endif
-CFLAGS := -Wall -Wextra -I.
-ifeq ($(notdir $(CC)),arm-linux-gnueabihf-gcc)
-	CFLAGS += -march=armv7-a -mtune=cortex-a7
-endif
+
+CFLAGS := $(BASE_CFLAGS) -I.
  
 ## Debug/Release Build Modes
 DEBUG ?= 1
@@ -31,36 +55,68 @@ endif
  
 ## Cross-compiler target (customize for your setup)
 CROSS_USER ?= pi
-CROSS_HOST ?= orange-pi.local
+CROSS_HOST ?= raspberrypi.local
 CROSS_PATH ?= /tmp
- 
+SUDO ?= sudo
+LOCAL_INSTALL_PATH ?= /usr/local/bin
+SYSTEMD_UNIT_DIR ?= /etc/systemd/system
+SYSTEMD_SERVICE_NAME ?= loki.service
+   
 ## Project Structure
-SOURCES := $(wildcard *.c) $(wildcard drivers/ai_client/*.c)
+SOURCES := $(wildcard *.c)
 HEADERS := $(wildcard *.h)
 OBJECTS := $(addprefix $(BUILD_DIR)/, $(SOURCES:.c=.o))
 DEPS := $(OBJECTS:.o=.d)
-TARGET := loki_app
+TARGET := loki_core.so
  
 ## Linker Settings
 LDFLAGS := -lm -lpthread
 
-## Optional libcurl for AI client (enabled when AI_ENABLED=1 at compile time)
-ifeq ($(AI_ENABLED),1)
-    CFLAGS  += -DAI_ENABLED=1
-    LDFLAGS += -lcurl
-    $(info [INFO] AI_ENABLED=1: building with libcurl support)
+ifeq ($(USING_CROSS),1)
+    SIZE_TOOL := arm-linux-gnueabihf-size
+    NM_TOOL   := arm-linux-gnueabihf-nm
+else
+    SIZE_TOOL := size
+    NM_TOOL   := nm
+endif
+
+## Optional: libgpiod for GPIO control (TFT pins + RS-485 DE)
+## Install:  sudo apt-get install libgpiod-dev
+## Enable:   make HAVE_LIBGPIOD=1
+## Disable:  make HAVE_LIBGPIOD=0
+## Default:  auto-detect via pkg-config
+HAVE_LIBGPIOD ?= auto
+ifeq ($(HAVE_LIBGPIOD),auto)
+    ifneq ($(shell pkg-config --exists libgpiod && echo 1),)
+        HAVE_LIBGPIOD := 1
+    else
+        HAVE_LIBGPIOD := 0
+    endif
+endif
+ifeq ($(HAVE_LIBGPIOD), 1)
+    CFLAGS  += -DHAVE_LIBGPIOD
+    LDFLAGS += -lgpiod
+    $(info [INFO] libgpiod enabled for GPIO (display + RS-485 DE))
+else
+    $(info [WARN] libgpiod disabled; falling back to sysfs GPIO backend)
 endif
  
+## Generated config headers — regenerated whenever config.toml or the script changes.
+$(CONFIG_HDRS): $(CONFIG_TOML) $(CONFIG_GEN)
+	$(PYTHON) $(CONFIG_GEN)
+
+## Regenerate config headers only.
+config: $(CONFIG_HDRS)
+
 ## Build Rules
-all: $(BUILD_DIR)/$(TARGET)
+all: $(CONFIG_HDRS) $(BUILD_DIR)/$(TARGET)
  
 $(BUILD_DIR)/$(TARGET): $(OBJECTS)
-	@mkdir -p $(BUILD_DIR)
+	@$(call MKDIR,$(BUILD_DIR)); true
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 	@echo "[✓] Successfully built $(TARGET) ($(BUILD_DIR))"
-	@echo "[✓] Binary size: $$(ls -lh $@ | awk '{print $$5}')"
  
-$(BUILD_DIR)/%.o: %.c
+$(BUILD_DIR)/%.o: %.c $(CONFIG_HDRS)
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -MMD -MP -c $< -o $@
 	@echo "[CC] $<"
@@ -72,17 +128,35 @@ $(BUILD_DIR)/%.o: %.c
 install: $(BUILD_DIR)/$(TARGET)
 	@echo "[→] Uploading to $(CROSS_USER)@$(CROSS_HOST):$(CROSS_PATH)..."
 	scp $(BUILD_DIR)/$(TARGET) $(CROSS_USER)@$(CROSS_HOST):$(CROSS_PATH)/
-	ssh $(CROSS_USER)@$(CROSS_HOST) 'chmod +x $(CROSS_PATH)/$(TARGET)'
 	@echo "[✓] Installation complete"
+
+## Local installation target (for running directly on this machine)
+install-local: $(BUILD_DIR)/$(TARGET)
+	@echo "[→] Installing locally to $(LOCAL_INSTALL_PATH)/$(TARGET)..."
+	$(SUDO) install -m 755 $(BUILD_DIR)/$(TARGET) $(LOCAL_INSTALL_PATH)/$(TARGET)
+	@echo "[✓] Local installation complete"
+
+## Install and enable systemd service on local Linux host (e.g. Raspberry Pi)
+install-service: install-local
+	@echo "[→] Installing systemd unit $(SYSTEMD_SERVICE_NAME) to $(SYSTEMD_UNIT_DIR)..."
+	$(SUDO) install -m 644 loki.service $(SYSTEMD_UNIT_DIR)/$(SYSTEMD_SERVICE_NAME)
+	$(SUDO) systemctl daemon-reload
+	$(SUDO) systemctl enable $(SYSTEMD_SERVICE_NAME)
+	$(SUDO) systemctl restart $(SYSTEMD_SERVICE_NAME)
+	@echo "[✓] Service installed and started"
+	$(SUDO) systemctl --no-pager --full status $(SYSTEMD_SERVICE_NAME)
+
+## Follow Loki service logs
+service-logs:
+	$(SUDO) journalctl -u $(SYSTEMD_SERVICE_NAME) -f
  
 ## Run on target
-run: install
-	@echo "[→] Executing on target..."
-	ssh $(CROSS_USER)@$(CROSS_HOST) 'sudo $(CROSS_PATH)/$(TARGET)'
+run:
+	python3 main.py
  
 ## Local testing (without hardware)
 test: clean
-	$(MAKE) DEBUG=1 CFLAGS="$(CFLAGS) -DMOCK_HARDWARE"
+	$(MAKE) DEBUG=1 CFLAGS+=-DMOCK_HARDWARE
 	./build/debug/$(TARGET)
  
 ## Documentation generation (requires Doxygen)
@@ -113,8 +187,8 @@ analyze:
 ## Size report
 size: $(BUILD_DIR)/$(TARGET)
 	@echo "[→] Binary size breakdown:"
-	arm-linux-gnueabihf-size $(BUILD_DIR)/$(TARGET)
-	arm-linux-gnueabihf-nm -tS $(BUILD_DIR)/$(TARGET) | head -20
+	$(SIZE_TOOL) $(BUILD_DIR)/$(TARGET)
+	$(NM_TOOL) -tS $(BUILD_DIR)/$(TARGET) | head -20
  
 ## Print configuration
 info:
@@ -128,4 +202,4 @@ info:
 	@echo "║ Target path: $(CROSS_PATH)"
 	@echo "╚════════════════════════════════════════╝"
  
-.PHONY: all clean clean-all install run test docs analyze size info
+.PHONY: all config clean clean-all install install-local install-service service-logs run test docs analyze size info
