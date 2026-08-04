@@ -1,242 +1,175 @@
 #!/usr/bin/env python3
 """
-gen_config.py — Generate C config headers from config.toml.
-
-Usage:
-    python3 tools/gen_config.py
-
-Generates (at repo root):
-    board_config.h   — board-level settings (frequencies, sizes, timing)
-    pinout.h         — GPIO/SPI/I2C/UART pin assignments
-    config.h         — umbrella header that includes the two above
-
-All generated files carry an AUTO-GENERATED banner and must not be edited
-by hand.  Edit config.toml and re-run this script instead.
-
-Requires Python 3.11+ (tomllib is in the standard library from 3.11 onward).
+Generate board_config.h, pinout.h, and config.h from config.toml.
+Runtime settings are kept in config.toml for application/plugin use.
+Build-time macro generation reads [build.board] and [build.pinout].
 """
+
 from __future__ import annotations
 
 import pathlib
 import sys
 
-# tomllib is stdlib in Python 3.11+
 try:
     import tomllib
 except ModuleNotFoundError:
-    print(
-        "ERROR: Python 3.11+ is required (tomllib not found). "
-        "On older Python you can install 'tomli' and import it instead.",
-        file=sys.stderr,
-    )
-    sys.exit(1)
+    print("Python 3.11+ is required (tomllib not found).", file=sys.stderr)
+    raise SystemExit(1)
 
-# ---------------------------------------------------------------------------
-# Paths
-# ---------------------------------------------------------------------------
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-TOML_PATH = ROOT / "config.toml"
-BOARD_H   = ROOT / "board_config.h"
-PINOUT_H  = ROOT / "pinout.h"
-CONFIG_H  = ROOT / "config.h"
+CONFIG_TOML = ROOT / "config.toml"
+BOARD_H = ROOT / "board_config.h"
+PINOUT_H = ROOT / "pinout.h"
+CONFIG_H = ROOT / "config.h"
 
-# ---------------------------------------------------------------------------
-# Banner written into every generated file
-# ---------------------------------------------------------------------------
-BANNER = """\
-/* AUTO-GENERATED FILE — do not edit by hand.
- * Source:    config.toml
+BANNER = """/* AUTO-GENERATED FILE - do not edit directly.
+ * Source: config.toml
  * Generator: tools/gen_config.py
- * Regenerate with: python3 tools/gen_config.py
  */"""
 
 
-# ---------------------------------------------------------------------------
-# Value formatting helpers
-# ---------------------------------------------------------------------------
-
-def fmt_value(v: object) -> str:
-    """Return the C literal representation for a TOML scalar value."""
-    if isinstance(v, bool):
-        # bool is a subclass of int — check it first
-        return "1" if v else "0"
-    if isinstance(v, int):
-        return str(v)
-    if isinstance(v, float):
-        # Preserve at least one decimal place so it looks like a float in C
-        s = repr(v)
-        if "." not in s and "e" not in s.lower():
-            s += ".0"
-        return s
-    if isinstance(v, str):
-        # Strings are emitted as quoted C string literals
-        escaped = v.replace("\\", "\\\\").replace('"', '\\"')
+def format_value(value: object) -> str:
+    if isinstance(value, bool):
+        return "1" if value else "0"
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        formatted = repr(value)
+        if "." not in formatted and "e" not in formatted.lower():
+            formatted += ".0"
+        return formatted
+    if isinstance(value, str):
+        escaped = value.replace("\\", "\\\\").replace('"', '\\"')
         return f'"{escaped}"'
-    raise TypeError(f"Unsupported TOML value type: {type(v).__name__!r} for value {v!r}")
+    raise TypeError(f"Unsupported TOML value type: {type(value)!r}")
 
 
-def fmt_hex(v: int) -> str:
-    """Return a 0x-prefixed uppercase hex literal."""
-    if not isinstance(v, int) or isinstance(v, bool):
-        raise TypeError(f"Expected int for hex section, got {type(v).__name__!r}")
-    if v < 0:
-        raise ValueError(f"Hex values must be non-negative integers, got {v}")
-    # Use enough digits to represent the value cleanly
-    if v <= 0xFF:
-        return f"0x{v:02X}"
-    if v <= 0xFFFF:
-        return f"0x{v:04X}"
-    return f"0x{v:06X}"
+def format_hex(value: object) -> str:
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise TypeError(f"Hex value must be int, got {type(value)!r}")
+    return f"0x{value:X}"
 
 
-# ---------------------------------------------------------------------------
-# Header emitters
-# ---------------------------------------------------------------------------
-
-def _write_defines(lines: list[str], section: dict) -> None:
-    """Append #define lines for every scalar key in *section* (skip sub-tables)."""
-    for name, value in section.items():
+def write_defines(lines: list[str], section: dict[str, object]) -> None:
+    for key, value in section.items():
         if isinstance(value, dict):
-            continue  # sub-table — handled separately
-        lines.append(f"#define {name:<24} {fmt_value(value)}")
+            continue
+        lines.append(f"#define {key:<28} {format_value(value)}")
 
 
-def _write_hex_defines(lines: list[str], hex_section: dict) -> None:
-    """Append #define lines with 0x… literals for every key in *hex_section*."""
-    for name, value in hex_section.items():
-        lines.append(f"#define {name:<24} {fmt_hex(value)}")
+def write_hex_defines(lines: list[str], section: dict[str, object]) -> None:
+    for key, value in section.items():
+        lines.append(f"#define {key:<28} {format_hex(value)}")
 
 
-def _write_raw_defines(lines: list[str], raw_section: dict) -> None:
-    """Append #define lines where values are raw C identifiers (no quotes)."""
-    for name, raw_expr in raw_section.items():
-        if not isinstance(raw_expr, str):
-            raise TypeError(
-                f"[*.raw] entries must be TOML strings, got {type(raw_expr).__name__!r}"
-                f" for key {name!r}"
-            )
-        lines.append(f"#define {name:<24} {raw_expr}")
+def write_raw_defines(lines: list[str], section: dict[str, object]) -> None:
+    for key, value in section.items():
+        if not isinstance(value, str):
+            raise TypeError(f"Raw value for {key} must be string")
+        lines.append(f"#define {key:<28} {value}")
 
 
-def emit_board_config_h(board: dict, path: pathlib.Path) -> None:
-    guard = "BOARD_CONFIG_H"
+def emit_board(board: dict[str, object]) -> None:
     lines: list[str] = [
-        f"#ifndef {guard}",
-        f"#define {guard}",
+        "#ifndef BOARD_CONFIG_H",
+        "#define BOARD_CONFIG_H",
         "",
         BANNER,
         "",
         "/* ===== BOARD CONFIGURATION ===== */",
     ]
-
-    _write_defines(lines, board)
+    write_defines(lines, board)
 
     if "hex" in board:
-        lines.append("")
-        lines.append("/* ===== HEX CONSTANTS ===== */")
-        _write_hex_defines(lines, board["hex"])
-
+        lines.extend(["", "/* ===== HEX CONSTANTS ===== */"])
+        write_hex_defines(lines, board["hex"])
     if "raw" in board:
-        lines.append("")
-        lines.append("/* ===== C IDENTIFIER ALIASES ===== */")
-        _write_raw_defines(lines, board["raw"])
+        lines.extend(["", "/* ===== RAW CONSTANTS ===== */"])
+        write_raw_defines(lines, board["raw"])
 
-    lines += ["", f"#endif /* {guard} */", ""]
-    path.write_text("\n".join(lines), encoding="utf-8")
-    print(f"  wrote {path.relative_to(ROOT)}")
+    lines.extend(["", "#endif /* BOARD_CONFIG_H */", ""])
+    BOARD_H.write_text("\n".join(lines), encoding="utf-8")
 
 
-def emit_pinout_h(pinout: dict, path: pathlib.Path) -> None:
-    guard = "PINOUT_H"
+def emit_pinout(pinout: dict[str, object]) -> None:
     lines: list[str] = [
-        f"#ifndef {guard}",
-        f"#define {guard}",
+        "#ifndef PINOUT_H",
+        "#define PINOUT_H",
         "",
         BANNER,
         "",
-        "/* ===== PIN ASSIGNMENTS ===== */",
+        "/* ===== PINOUT CONFIGURATION ===== */",
     ]
-
-    _write_defines(lines, pinout)
+    write_defines(lines, pinout)
 
     if "hex" in pinout:
-        lines.append("")
-        lines.append("/* ===== HEX CONSTANTS ===== */")
-        _write_hex_defines(lines, pinout["hex"])
-
+        lines.extend(["", "/* ===== HEX CONSTANTS ===== */"])
+        write_hex_defines(lines, pinout["hex"])
     if "raw" in pinout:
-        lines.append("")
-        lines.append("/* ===== DEVICE ALIASES ===== */")
-        _write_raw_defines(lines, pinout["raw"])
+        lines.extend(["", "/* ===== RAW CONSTANTS ===== */"])
+        write_raw_defines(lines, pinout["raw"])
 
-    lines += ["", f"#endif /* {guard} */", ""]
-    path.write_text("\n".join(lines), encoding="utf-8")
-    print(f"  wrote {path.relative_to(ROOT)}")
+    lines.extend(["", "#endif /* PINOUT_H */", ""])
+    PINOUT_H.write_text("\n".join(lines), encoding="utf-8")
 
 
-def emit_config_h(path: pathlib.Path) -> None:
-    guard = "CONFIG_H"
-    lines: list[str] = [
-        f"#ifndef {guard}",
-        f"#define {guard}",
+def emit_master_config() -> None:
+    lines = [
+        "#ifndef CONFIG_H",
+        "#define CONFIG_H",
         "",
         BANNER,
         "",
-        "/**",
-        " * @file config.h",
-        " * @brief Master configuration entry point for the Loki project.",
-        " *",
-        " * AUTO-GENERATED from config.toml by tools/gen_config.py.",
-        " * Edit config.toml and regenerate headers; do not edit generated headers.",
-        " */",
-        "",
-        "/* Single entry point for all board and pin configuration.",
-        " * Include this header instead of board_config.h / pinout.h directly.",
-        " */",
         '#include "board_config.h"',
         '#include "pinout.h"',
         "",
-        f"#endif /* {guard} */",
+        "#endif /* CONFIG_H */",
         "",
     ]
-    path.write_text("\n".join(lines), encoding="utf-8")
-    print(f"  wrote {path.relative_to(ROOT)}")
+    CONFIG_H.write_text("\n".join(lines), encoding="utf-8")
 
 
-# ---------------------------------------------------------------------------
-# Validation
-# ---------------------------------------------------------------------------
+def resolve_build_sections(data: dict[str, object]) -> tuple[dict[str, object], dict[str, object]]:
+    """Return board and pinout sections for macro generation.
 
-def validate(data: dict) -> None:
-    errors: list[str] = []
-    if "board" not in data or not isinstance(data["board"], dict):
-        errors.append("Missing [board] table")
-    if "pinout" not in data or not isinstance(data["pinout"], dict):
-        errors.append("Missing [pinout] table")
-    if errors:
-        raise ValueError("config.toml validation failed:\n  " + "\n  ".join(errors))
+    Preferred layout:
+      [build.board], [build.pinout]
+    Backward-compatible layout:
+      [board], [pinout]
+    """
+    build = data.get("build")
+    if isinstance(build, dict) and isinstance(build.get("board"), dict) and isinstance(build.get("pinout"), dict):
+        return build["board"], build["pinout"]
 
+    board = data.get("board")
+    pinout = data.get("pinout")
+    if isinstance(board, dict) and isinstance(pinout, dict):
+        return board, pinout
 
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
+    raise ValueError(
+        "config.toml must define [build.board] and [build.pinout] "
+        "(or legacy [board]/[pinout])."
+    )
+
 
 def main() -> int:
-    if not TOML_PATH.exists():
-        print(f"ERROR: {TOML_PATH} not found", file=sys.stderr)
+    if not CONFIG_TOML.exists():
+        print(f"Missing {CONFIG_TOML}", file=sys.stderr)
         return 1
 
-    with TOML_PATH.open("rb") as fh:
-        data = tomllib.load(fh)
+    with CONFIG_TOML.open("rb") as file_obj:
+        data = tomllib.load(file_obj)
 
-    validate(data)
+    try:
+        board, pinout = resolve_build_sections(data)
+    except ValueError as error:
+        print(str(error), file=sys.stderr)
+        return 1
 
-    print(f"Reading {TOML_PATH.relative_to(ROOT)}")
-    print("Generating headers:")
-    emit_board_config_h(data["board"], BOARD_H)
-    emit_pinout_h(data["pinout"], PINOUT_H)
-    emit_config_h(CONFIG_H)
-    print("Done.")
+    emit_board(board)
+    emit_pinout(pinout)
+    emit_master_config()
+    print("Generated board_config.h, pinout.h, config.h")
     return 0
 
 

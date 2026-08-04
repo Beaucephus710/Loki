@@ -1,18 +1,9 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-/* AUTO-GENERATED FILE — do not edit by hand.
- * Source:    config.toml
+/* AUTO-GENERATED FILE - do not edit directly.
+ * Source: config.toml
  * Generator: tools/gen_config.py
- * Regenerate with: python3 tools/gen_config.py
- */
-
-/**
- * @file config.h
- * @brief Master configuration entry point for the Loki project.
- *
- * AUTO-GENERATED from config.toml by tools/gen_config.py.
- * Edit config.toml and regenerate headers; do not edit generated headers.
  */
 
 /* Single entry point for all board and pin configuration.
