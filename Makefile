@@ -67,7 +67,7 @@ SOURCES := $(wildcard *.c)
 HEADERS := $(wildcard *.h)
 OBJECTS := $(addprefix $(BUILD_DIR)/, $(SOURCES:.c=.o))
 DEPS := $(OBJECTS:.o=.d)
-TARGET := loki_app
+TARGET := loki_core.so
  
 ## Linker Settings
 LDFLAGS := -lm -lpthread
@@ -112,12 +112,11 @@ config: $(CONFIG_HDRS)
 all: $(CONFIG_HDRS) $(BUILD_DIR)/$(TARGET)
  
 $(BUILD_DIR)/$(TARGET): $(OBJECTS)
-	@mkdir -p $(BUILD_DIR)
+	@$(call MKDIR,$(BUILD_DIR)); true
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 	@echo "[✓] Successfully built $(TARGET) ($(BUILD_DIR))"
-	@echo "[✓] Binary size: $$(ls -lh $@ | awk '{print $$5}')"
  
-$(BUILD_DIR)/%.o: %.c
+$(BUILD_DIR)/%.o: %.c $(CONFIG_HDRS)
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -MMD -MP -c $< -o $@
 	@echo "[CC] $<"
@@ -129,7 +128,6 @@ $(BUILD_DIR)/%.o: %.c
 install: $(BUILD_DIR)/$(TARGET)
 	@echo "[→] Uploading to $(CROSS_USER)@$(CROSS_HOST):$(CROSS_PATH)..."
 	scp $(BUILD_DIR)/$(TARGET) $(CROSS_USER)@$(CROSS_HOST):$(CROSS_PATH)/
-	ssh $(CROSS_USER)@$(CROSS_HOST) 'chmod +x $(CROSS_PATH)/$(TARGET)'
 	@echo "[✓] Installation complete"
 
 ## Local installation target (for running directly on this machine)
@@ -153,9 +151,8 @@ service-logs:
 	$(SUDO) journalctl -u $(SYSTEMD_SERVICE_NAME) -f
  
 ## Run on target
-run: install
-	@echo "[→] Executing on target..."
-	ssh $(CROSS_USER)@$(CROSS_HOST) 'sudo $(CROSS_PATH)/$(TARGET)'
+run:
+	python3 main.py
  
 ## Local testing (without hardware)
 test: clean
