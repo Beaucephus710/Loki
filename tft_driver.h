@@ -7,7 +7,11 @@
  */
 
 #include "types.h"
+<<<<<<< HEAD
+#include "board_config.h"
+=======
 #include "config.h"
+>>>>>>> origin/main
 
 /* ===== TFT DISPLAY CONTROL ===== */
 
