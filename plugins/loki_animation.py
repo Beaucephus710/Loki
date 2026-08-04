@@ -73,7 +73,31 @@ def _resolve_dragon_config(config) -> dict:
     return dragon_cfg
 
 
-def _get_display(dragon_anim_cfg: dict):
+def _resolve_display_config(config) -> dict:
+    """Resolve display settings from the parsed runtime config payload."""
+    if not isinstance(config, dict):
+        return {}
+
+    display_cfg: dict = {}
+    plugins_cfg = config.get("plugins")
+    if isinstance(plugins_cfg, dict):
+        plugin_display_cfg = plugins_cfg.get("display")
+        if isinstance(plugin_display_cfg, dict):
+            display_cfg.update(plugin_display_cfg)
+
+    ui_cfg = config.get("ui")
+    if isinstance(ui_cfg, dict):
+        ui_display_cfg = ui_cfg.get("display")
+        if isinstance(ui_display_cfg, dict):
+            display_cfg.update(ui_display_cfg)
+
+    if isinstance(config.get("display"), dict):
+        display_cfg.update(config["display"])
+
+    return display_cfg
+
+
+def _get_display(dragon_anim_cfg: dict, display_cfg: dict | None = None):
     """Return a LokiDisplay instance, or ``None`` if unavailable."""
     try:
         from display import init_display
@@ -88,7 +112,7 @@ def _get_display(dragon_anim_cfg: dict):
 
         # Map [dragon.animation] width/height into the display config dict so the
         # display opens with matching dimensions when first initialised.
-        disp_cfg: dict = {}
+        disp_cfg: dict = dict(display_cfg or {})
         if dragon_anim_cfg.get("width"):
             disp_cfg["width"] = dragon_anim_cfg["width"]
         if dragon_anim_cfg.get("height"):
@@ -150,7 +174,8 @@ class LokiAnimationPlugin(Plugin):
             anim_cfg = dragon_raw.get("animation", {})
             self._animator = DragonAnimator(anim_cfg)
 
-            self._display = _get_display(anim_cfg)
+            display_cfg = _resolve_display_config(self.config)
+            self._display = _get_display(anim_cfg, display_cfg)
 
             fps = self._animator.fps
             interval = 1.0 / fps
