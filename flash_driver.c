@@ -1,12 +1,13 @@
 /**
  * SPI Flash Driver Implementation for W25Q40
- * Orange Pi Zero 2W - SPI2 Interface
+ * Raspberry Pi - SPI2 Interface
  */
 
 #include "flash_driver.h"
-#include "../../hal/spi/spi.h"
-#include "../../hal/gpio/gpio.h"
-#include "../../config/pinout.h"
+#include "spi.h"
+#include "gpio.h"
+#include "config.h"
+#include "log.h"
 #include <string.h>
 #include <unistd.h>
 
@@ -40,7 +41,6 @@ static flash_context_t flash_ctx = {
  */
 static hal_status_t flash_wait_ready(void)
 {
-    uint8_t status;
     uint32_t timeout = 10000;
 
     while (timeout-- > 0) {
@@ -82,6 +82,8 @@ hal_status_t flash_init(void)
     }
 
     /* Initialize SPI2 for Flash */
+    LOG_INFO("Flash interface: SPI bus %d (/dev/spidev1.1) CS pin %u @ %u Hz",
+             SPI_BUS_2, SPI2_CS0, FLASH_SPI_FREQ);
     spi_config_t spi_cfg = {
         .frequency = FLASH_SPI_FREQ,
         .mode = SPI_MODE_0,
@@ -97,17 +99,24 @@ hal_status_t flash_init(void)
     uint8_t jedec_id[3];
     hal_status_t status = flash_get_jedec_id(jedec_id);
     if (status != HAL_OK) {
+        LOG_ERROR("Flash JEDEC read failed during init");
         return status;
     }
 
     /* Check if JEDEC ID matches W25Q40 */
     uint32_t id = (jedec_id[0] << 16) | (jedec_id[1] << 8) | jedec_id[2];
     if (id != FLASH_JEDEC_ID) {
+        LOG_WARN("Flash JEDEC mismatch during init: got 0x%06X expected 0x%06X", id, FLASH_JEDEC_ID);
         return HAL_ERROR;  /* Unexpected flash JEDEC ID */
     }
 
     flash_ctx.initialized = 1;
     return HAL_OK;
+}
+
+uint8_t flash_is_ready(void)
+{
+    return flash_ctx.initialized;
 }
 
 hal_status_t flash_read(uint32_t address, uint8_t *buffer, uint32_t length)

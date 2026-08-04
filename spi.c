@@ -1,12 +1,15 @@
 /**
  * SPI Hardware Abstraction Layer Implementation
- * Orange Pi Zero 2W
+ * Raspberry Pi
  */
 
 #include "spi.h"
+#include "log.h"
+#include "pinout.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
@@ -46,9 +49,14 @@ static hal_status_t spi_validate_bus(spi_bus_t bus)
  */
 static const char* spi_get_device_path(spi_bus_t bus)
 {
-    /* Orange Pi Zero 2W SPI device mapping */
+    /* Raspberry Pi SPI device mapping */
     switch (bus) {
-        case SPI_BUS_0: return "/dev/spidev0.0";
+        case SPI_BUS_0:
+#if defined(TFT_CS) && defined(SPI0_CS1)
+            return (TFT_CS == SPI0_CS1) ? "/dev/spidev0.1" : "/dev/spidev0.0";
+#else
+            return "/dev/spidev0.0";
+#endif
         case SPI_BUS_1: return "/dev/spidev1.0";
         case SPI_BUS_2: return "/dev/spidev1.1";
         default: return NULL;
@@ -67,9 +75,11 @@ static hal_status_t spi_open_device(spi_bus_t bus, spi_context_t *ctx)
 
     int fd = open(device_path, O_RDWR);
     if (fd < 0) {
+        LOG_ERROR("Failed to open SPI device %s: %s", device_path, strerror(errno));
         return HAL_ERROR;
     }
 
+    LOG_INFO("SPI bus %d mapped to %s", bus, device_path);
     ctx->device_handle = fd;
     return HAL_OK;
 }
@@ -104,6 +114,7 @@ hal_status_t spi_init(spi_bus_t bus, const spi_config_t *config)
     /* Set SPI mode */
     uint8_t mode = config->mode;
     if (ioctl(ctx->device_handle, SPI_IOC_WR_MODE, &mode) < 0) {
+        LOG_ERROR("Failed to set SPI mode on bus %d: %s", bus, strerror(errno));
         close(ctx->device_handle);
         ctx->device_handle = -1;
         return HAL_ERROR;
@@ -112,6 +123,7 @@ hal_status_t spi_init(spi_bus_t bus, const spi_config_t *config)
     /* Set bits per word */
     uint8_t bits = config->bits_per_word;
     if (ioctl(ctx->device_handle, SPI_IOC_WR_BITS_PER_WORD, &bits) < 0) {
+        LOG_ERROR("Failed to set SPI bits-per-word on bus %d: %s", bus, strerror(errno));
         close(ctx->device_handle);
         ctx->device_handle = -1;
         return HAL_ERROR;
@@ -120,6 +132,7 @@ hal_status_t spi_init(spi_bus_t bus, const spi_config_t *config)
     /* Set SPI clock speed */
     uint32_t speed = config->frequency;
     if (ioctl(ctx->device_handle, SPI_IOC_WR_MAX_SPEED_HZ, &speed) < 0) {
+        LOG_ERROR("Failed to set SPI speed on bus %d: %s", bus, strerror(errno));
         close(ctx->device_handle);
         ctx->device_handle = -1;
         return HAL_ERROR;
@@ -128,6 +141,7 @@ hal_status_t spi_init(spi_bus_t bus, const spi_config_t *config)
     /* Set LSB/MSB first */
     uint8_t lsb_first = (config->bit_order == SPI_LSB_FIRST) ? 1 : 0;
     if (ioctl(ctx->device_handle, SPI_IOC_WR_LSB_FIRST, &lsb_first) < 0) {
+        LOG_ERROR("Failed to set SPI bit order on bus %d: %s", bus, strerror(errno));
         close(ctx->device_handle);
         ctx->device_handle = -1;
         return HAL_ERROR;
@@ -164,6 +178,7 @@ hal_status_t spi_write(spi_bus_t bus, uint32_t cs_pin, const uint8_t *data, uint
     };
 
     if (ioctl(ctx->device_handle, SPI_IOC_MESSAGE(1), &tr) < 0) {
+        LOG_ERROR("SPI write failed on bus %d: %s", bus, strerror(errno));
         return HAL_ERROR;
     }
 
@@ -197,6 +212,7 @@ hal_status_t spi_read(spi_bus_t bus, uint32_t cs_pin, uint8_t *data, uint32_t le
     };
 
     if (ioctl(ctx->device_handle, SPI_IOC_MESSAGE(1), &tr) < 0) {
+        LOG_ERROR("SPI read failed on bus %d: %s", bus, strerror(errno));
         return HAL_ERROR;
     }
 
@@ -233,6 +249,7 @@ hal_status_t spi_transfer(spi_bus_t bus, uint32_t cs_pin,
         };
 
         if (ioctl(ctx->device_handle, SPI_IOC_MESSAGE(1), &tr) < 0) {
+            LOG_ERROR("SPI transfer (TX phase) failed on bus %d: %s", bus, strerror(errno));
             return HAL_ERROR;
         }
     }
@@ -248,6 +265,7 @@ hal_status_t spi_transfer(spi_bus_t bus, uint32_t cs_pin,
         };
 
         if (ioctl(ctx->device_handle, SPI_IOC_MESSAGE(1), &tr) < 0) {
+            LOG_ERROR("SPI transfer (RX phase) failed on bus %d: %s", bus, strerror(errno));
             return HAL_ERROR;
         }
     }

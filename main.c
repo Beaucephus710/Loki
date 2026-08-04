@@ -1,6 +1,6 @@
 /**
  * @file main.c
- * @brief Loki - Orange Pi Zero 2W Interactive Display System
+ * @brief Loki - Raspberry Pi Interactive Display System
  * 
  * Main entry point and example usage of the Loki board system.
  * Demonstrates hardware initialization, device testing, and communication.
@@ -12,15 +12,15 @@
 #include <signal.h>
 #include <string.h>
 
-#include "core/system.h"
-#include "drivers/tft/tft_driver.h"
-#include "drivers/sdcard/sdcard_driver.h"
-#include "drivers/flash/flash_driver.h"
-#include "drivers/eeprom/eeprom_driver.h"
-#include "drivers/flipper_uart/flipper_uart.h"
-#include "utils/log.h"
-#include "utils/memory.h"
-#include "utils/retry.h"
+#include "system.h"
+#include "tft_driver.h"
+#include "sdcard_driver.h"
+#include "flash_driver.h"
+#include "eeprom_driver.h"
+#include "flipper_uart.h"
+#include "log.h"
+#include "memory.h"
+#include "retry.h"
 #include "loki_life.h"
 
 /* ===== GLOBAL STATE ===== */
@@ -28,6 +28,17 @@ volatile sig_atomic_t should_exit = 0;
 
 /** Global Loki life-cycle state — initialised in main() */
 static loki_state_t loki;
+
+static int has_flag(int argc, char *argv[], const char *flag)
+{
+    int i;
+    for (i = 1; i < argc; i++) {
+        if (strcmp(argv[i], flag) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
 
 /* ===== SIGNAL HANDLERS ===== */
 /**
@@ -158,6 +169,9 @@ static void test_flipper_communication(void)
  * stage transitions so you can see every subsystem working together.
  * On real hardware the same calls happen in response to user input and
  * elapsed real time; here we use simulated seconds so it runs quickly.
+ *
+ * Enable with the --demo flag: it mutates Loki state and is not suitable
+ * for normal startup on real hardware.
  */
 static void demo_loki_lifecycle(void)
 {
@@ -208,11 +222,14 @@ static void demo_loki_lifecycle(void)
     /* --- Phase 3: Grow through young stage --- */
     LOG_INFO("--- Phase 3: Growing toward YOUNG stage (200 gp) ---");
     /* 8 cycles of feed+interact+tick to accumulate gp toward the 200-gp threshold */
-    for (uint8_t cycle = 0; cycle < 8; cycle++) {
-        loki_feed(&loki, LOKI_FOOD_TASTY);
-        loki_interact(&loki);
-        loki_interact(&loki);
-        loki_tick(&loki, 120);  /* 2 minutes per cycle */
+    {
+        int cycle;
+        for (cycle = 0; cycle < 8; cycle++) {
+            loki_feed(&loki, LOKI_FOOD_TASTY);
+            loki_interact(&loki);
+            loki_interact(&loki);
+            loki_tick(&loki, 120);  /* 2 minutes per cycle */
+        }
     }
     loki_feed(&loki, LOKI_FOOD_SPECIAL);
     loki_feed(&loki, LOKI_FOOD_SPECIAL);
@@ -222,10 +239,13 @@ static void demo_loki_lifecycle(void)
     /* --- Phase 4: Grow toward adult --- */
     LOG_INFO("--- Phase 4: Growing toward ADULT stage (500 gp) ---");
     /* 12 cycles with special treats to cross the 500-gp adult threshold */
-    for (uint8_t cycle = 0; cycle < 12; cycle++) {
-        loki_feed(&loki, LOKI_FOOD_SPECIAL);
-        loki_interact(&loki);
-        loki_tick(&loki, 180);  /* 3 minutes per cycle */
+    {
+        int cycle;
+        for (cycle = 0; cycle < 12; cycle++) {
+            loki_feed(&loki, LOKI_FOOD_SPECIAL);
+            loki_interact(&loki);
+            loki_tick(&loki, 180);  /* 3 minutes per cycle */
+        }
     }
 
     loki_print_status(&loki);
@@ -267,9 +287,13 @@ static void demo_loki_lifecycle(void)
  */
 int main(int argc, char *argv[])
 {
+    int wait_for_flipper = has_flag(argc, argv, "--wait-flipper");
+    int skip_tests = has_flag(argc, argv, "--skip-tests");
+    int run_demo = has_flag(argc, argv, "--demo");
+
     /* Print banner */
     fprintf(stdout, "╔════════════════════════════════════════════════════╗\n");
-    fprintf(stdout, "║        Loki - Orange Pi Zero 2W Display System    ║\n");
+    fprintf(stdout, "║         Loki - Raspberry Pi Display System        ║\n");
     fprintf(stdout, "║         Powered by Flipper Zero Integration       ║\n");
     fprintf(stdout, "╚════════════════════════════════════════════════════╝\n\n");
 
@@ -297,27 +321,50 @@ int main(int argc, char *argv[])
     /* Initialize Loki life-cycle system */
     loki_init(&loki);
 
-    /* Run hardware tests */
-    LOG_INFO("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    LOG_INFO("Running hardware tests...");
-    LOG_INFO("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    if (skip_tests) {
+        LOG_INFO("Skipping hardware tests (--skip-tests)");
+    } else {
+        /* Run hardware tests */
+        LOG_INFO("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        LOG_INFO("Running hardware tests...");
+        LOG_INFO("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
-    test_tft_display();
-    sleep(1);
+        test_tft_display();
+        sleep(1);
 
-    test_flash();
-    sleep(1);
+        if (flash_is_ready()) {
+            test_flash();
+            sleep(1);
+        } else {
+            LOG_INFO("Skipping Flash test (flash not initialized)");
+        }
 
-    test_eeprom();
-    sleep(1);
+        if (eeprom_is_ready()) {
+            test_eeprom();
+            sleep(1);
+        } else {
+            LOG_INFO("Skipping EEPROM test (EEPROM not initialized/connected)");
+        }
 
-    test_flipper_communication();
-    sleep(1);
+        test_flipper_communication();
+        sleep(1);
 
-    LOG_INFO("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        LOG_INFO("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    }
 
-    /* Run Loki life-cycle demonstration */
-    demo_loki_lifecycle();
+    /* Run Loki life-cycle demonstration only when explicitly requested */
+    if (run_demo) {
+        demo_loki_lifecycle();
+    }
+
+    if (!wait_for_flipper && flipper_available() == 0) {
+        LOG_INFO("No Flipper data detected. Exiting standalone run.");
+        LOG_INFO("Tip: run with --wait-flipper to stay in command wait mode.");
+        system_shutdown();
+        LOG_INFO("Loki system terminated successfully");
+        fprintf(stdout, "\n✓ Goodbye!\n");
+        return EXIT_SUCCESS;
+    }
 
     /* Main loop */
     LOG_INFO("Entering main loop. Press Ctrl+C to exit.");

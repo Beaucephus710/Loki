@@ -7,8 +7,8 @@
  * 4 Megabit (512 KiB) capacity
  */
 
-#include "../../includes/types.h"
-#include "../../config/board_config.h"
+#include "types.h"
+#include "config.h"
 
 /* ===== LOKI CREDITS FLASH INTERFACE ===== */
 
@@ -17,6 +17,12 @@
  * @return HAL_OK on success
  */
 hal_status_t flash_init(void);
+
+/**
+ * Check whether flash is initialized and ready.
+ * @return 1 when ready, 0 otherwise
+ */
+uint8_t flash_is_ready(void);
 
 /**
  * Read from flash memory

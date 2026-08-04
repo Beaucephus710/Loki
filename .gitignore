@@ -1,55 +1,64 @@
-# Prerequisites
-*.d
-
-# Object files
-*.o
-*.ko
-*.obj
-*.elf
-
-# Linker output
-*.ilk
-*.map
-*.exp
-
-# Precompiled Headers
-*.gch
-*.pch
-
-# Libraries
-*.lib
-*.a
-*.la
-*.lo
-
-# Shared objects (inc. Windows DLLs)
-*.dll
-*.so
-*.so.*
-*.dylib
-
-# Executables
-*.exe
-*.out
-*.app
-*.i*86
-*.x86_64
-*.hex
 
 # Debug files
-*.dSYM/
-*.su
-*.idb
-*.pdb
-
+# Dragon system — generated/persistent files (not for version control)
+# Executables
 # Kernel Module Compile Results
-*.mod*
-*.cmd
-.tmp_versions/
-modules.order
-Module.symvers
-Mkfile.old
-dkms.conf
-
+# Libraries
+# Linker output
+# Object files
+# Precompiled Headers
+# Prerequisites
+# Shared objects (inc. Windows DLLs)
 # debug information files
+*.a
+*.app
+*.bak
+*.bak[0-9]*
+*.cmd
+*.d
+*.dSYM/
+*.dll
 *.dwo
+*.dylib
+*.elf
+*.exe
+*.exp
+*.gch
+*.gif
+*.hex
+*.i*86
+*.idb
+*.ilk
+*.ko
+*.la
+*.lib
+*.lo
+*.log
+*.map
+*.mod*
+*.o
+*.obj
+*.out
+*.pch
+*.pdb
+*.py[cod]
+*.save
+*.so
+*.so.*
+*.su
+*.tmp
+*.x86_64
+.idea/
+.tmp_versions/
+.venv/
+.vscode/
+Mkfile.old
+Module.symvers
+__pycache__/
+dkms.conf
+dragon_state.json
+loki.gif
+loki_preview.png
+modules.order
+venv/
+build/

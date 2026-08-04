@@ -188,7 +188,100 @@ make docs
 make clean
 ```
 
-If your environment is missing the ARM cross-compiler, builds that depend on `arm-linux-gnueabihf-gcc` will fail until the toolchain is installed.
+The maintained native target is `loki_core.so`, a small shared library used by
+`loki.py`. The interactive application is Python-based. Use Python 3.11 or
+newer, then install the display dependency before starting the application:
+
+```bash
+python3 -m pip install -r requirements.txt
+python3 main.py
+```
+
+On Debian-based SBC images, `sudo apt install python3-pil` is an equivalent
+system-package installation for the display renderer. Without Pillow, Loki
+still starts its configuration UI and non-display plugins, but display and
+dragon animation rendering fall back safely.
+
+Use `make test` to run the Python test suite.
+
+## Local configuration UI
+
+Loki uses the same USB-network addresses as a typical Pwnagotchi setup:
+Loki is `10.0.0.2` and the connected computer is `10.0.0.1`. Install the
+included systemd-networkd profile on Loki once, then restart networking:
+
+```bash
+sudo install -D -m 644 network/loki-usb0.network /etc/systemd/network/10-loki-usb0.network
+sudo systemctl enable --now systemd-networkd
+sudo systemctl restart systemd-networkd
+```
+
+Set the computer's USB Ethernet interface to the static address
+`10.0.0.1/24`, connect to Loki over USB, and open `http://10.0.0.2:8080`.
+On Linux, this can be configured with:
+
+```bash
+sudo ip address replace 10.0.0.1/24 dev <usb-interface>
+sudo ip link set <usb-interface> up
+```
+
+The UI accepts connections only from that USB subnet. Edit values, save them,
+then restart Loki for the updated configuration to take effect. Configure the
+WPA-SEC plugin key outside the repository:
+
+```bash
+export LOKI_WPA_SEC_API_KEY="your-key"
+python3 main.py
+```
+
+For a systemd-managed Loki process, persist the key in an override instead of
+adding it to `config.toml`:
+
+```bash
+sudo systemctl edit loki
+# Add: [Service]
+# Add: Environment=LOKI_WPA_SEC_API_KEY=your-key
+```
+
+Set `[web_ui].enabled = false` in `config.toml` to disable the editor. For a
+strictly local-only UI instead, set `[web_ui].host = "127.0.0.1"`.
+
+## A2C AI brain (Pwnagotchi-style adaptive loop)
+
+Loki now includes a local actor-critic plugin at `plugins/ai_brain.py` that
+runs a lightweight A2C loop without external ML dependencies.
+
+1. Enable Bettercap telemetry and the AI brain in `config.toml`:
+   - `[plugins.bettercap].enabled = true`
+   - `[plugins.ai_brain].enabled = true`
+   - `[plugins.ai_brain].learning = true` (online updates)
+2. Start Loki normally with `python3 main.py`.
+3. Let it run for a while; policy/value weights are persisted to:
+   - `~/.local/share/loki/a2c_state.json`
+4. For inference-only behavior, set:
+   - `[plugins.ai_brain].learning = false`
+5. To make inference deterministic (no action sampling), set:
+   - `[plugins.ai_brain].deterministic = true`
+
+The AI brain consumes shared telemetry (AP/client counts and API health) from
+the Bettercap plugin and publishes its current action/probabilities through
+plugin state for other modules to consume.
+
+## Master configuration (`config.toml`)
+
+Loki now uses a single master `config.toml` with a runtime-first structure inspired by Pwnagotchi:
+
+- `[main]`, `[main.auth]`, `[main.network]`
+- `[main.plugins.*]` including plugin loader settings
+- `[ui]`, `[ui.web]`, `[ui.display]`
+
+Build-time C macros are generated from `[build.board]` and `[build.pinout]` by:
+
+```bash
+python3 tools/gen_config.py
+```
+
+The generated files are `board_config.h`, `pinout.h`, and `config.h`.
 
 ## Good ways to study this project
 
@@ -205,7 +298,7 @@ If you are learning from this repo, a strong reading order is:
 
 ## Hardware focus
 
-The repository was originally documented around Orange Pi Zero 2W hardware, and much of the current checked-in code and documentation still reflects that. The code also includes Raspberry Pi and Flipper-related intent in various places, so treat board assumptions as something to verify before wiring real hardware.
+The repository was originally documented around Raspberry Pi hardware, and much of the current checked-in code and documentation still reflects that. The code also includes Raspberry Pi and Flipper-related intent in various places, so treat board assumptions as something to verify before wiring real hardware.
 
 ## Important note
 
@@ -220,3 +313,4 @@ This README now focuses only on the most teachable and durable information. For 
 ## License
 
 MIT License. See `LICENSE`.
+
