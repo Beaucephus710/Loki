@@ -3,7 +3,7 @@
 
 /**
  * @file gpio.h
- * @brief GPIO Hardware Abstraction Layer for Orange Pi Zero 2W
+ * @brief GPIO Hardware Abstraction Layer for Raspberry Pi
  * 
  * Provides GPIO pin control interface for digital I/O operations.
  * Supports pin configuration, output control, and input reading.

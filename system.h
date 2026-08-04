@@ -3,7 +3,7 @@
 
 /**
  * System Initialization and Management
- * Orange Pi Zero 2W Loki Board
+ * Raspberry Pi Loki Board
  */
 
 #include "types.h"

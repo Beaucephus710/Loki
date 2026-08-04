@@ -2,7 +2,7 @@
 #define PWM_H
 
 /**
- * PWM Hardware Abstraction Layer for Orange Pi Zero 2W
+ * PWM Hardware Abstraction Layer for Raspberry Pi
  * Used for TFT backlight brightness control
  */
 

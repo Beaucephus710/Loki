@@ -2,7 +2,7 @@
 #define I2C_H
 
 /**
- * I2C Hardware Abstraction Layer for Orange Pi Zero 2W
+ * I2C Hardware Abstraction Layer for Raspberry Pi
  * Supports I2C0 for EEPROM communication
  */
 
