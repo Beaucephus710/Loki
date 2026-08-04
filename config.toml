@@ -1,399 +1,206 @@
-##############################################
-#                                            #
-#         LOKI — MAIN CONFIGURATION         #
-#                                            #
-#  Edit values here; no code changes needed  #
-#  Restart Loki after saving this file.      #
-#  Secrets (API keys) must be set via env    #
-#  variables — never hard-code them here.    #
-#                                            #
-##############################################
+# Loki master configuration
+# Runtime editable (Pwnagotchi-style layout) with build sections for C headers.
 
+[main]
+name = "loki"
+lang = "en"
+iface = "wlan0"
+mode = "interactive"
+confd = "/etc/loki/conf.d/"
+runtime_root = "/etc/loki"
+state_dir = "/var/lib/loki"
+log_dir = "/var/log/loki"
+custom_plugin_repos = []
+custom_plugins = "/usr/local/share/loki/custom-plugins/"
 
-##############################################
-# GLOBAL SETTINGS
-##############################################
+[main.auth]
+enabled = true
+method = "token"
+token = "change-me"
+username = "loki"
+password = "change-me"
+allow_remote = false
+allowed_users = ["loki"]
 
-# Enable ANSI colour output in the terminal log
-color = false
+[main.network]
+enabled = true
+hostname = "loki-rpi"
+dhcp = true
+ipv4_address = ""
+gateway = ""
+dns = ["1.1.1.1", "8.8.8.8"]
+country = "US"
 
-# Play the boot splash animation on startup
-boot_animation = true
+[main.plugins]
+enabled = true
+autodiscover = true
+directory = "/usr/local/share/loki/plugins/"
+startup = ["status", "telemetry"]
 
-# Run idle / ambient animations during normal operation
-regular_animation = true
+[main.plugins.loaders]
+python_enabled = true
+python_entrypoint = "plugin.py"
+python_manifest = "plugin.toml"
+binary_enabled = true
+binary_extension = ".so"
+wasm_enabled = false
+shell_enabled = false
 
-# Animation playback speed multiplier (1 = slowest, higher = faster)
-level_speed = 2
+[main.plugins.security]
+allow_unsigned = false
+allow_network_plugins = false
+sandbox = "restricted"
 
-# Render in ASCII art mode instead of pixel graphics
-ascii_mode = true
+[main.plugins.status]
+enabled = true
+refresh_interval = 5
 
+[main.plugins.telemetry]
+enabled = true
+publish_interval = 30
+endpoint = ""
+api_key = ""
 
-##############################################
-# DISPLAY (top-level – used by LokiConfig.display())
-##############################################
-[display]
+[main.plugins.auto-update]
+enabled = false
+interval_days = 7
+token = ""
+
+[main.log]
+path = "/var/log/loki/loki.log"
+path_debug = "/var/log/loki/loki-debug.log"
+
+[main.log.rotation]
+enabled = true
+size = "10M"
+
+[ui]
+invert = false
+cursor = true
+fps = 0.0
+
+[ui.web]
+enabled = true
+address = "0.0.0.0"
+auth = true
+username = "loki"
+password = "change-me"
+origin = ""
+port = 8080
+
+[ui.display]
+enabled = true
+rotation = 0
+type = "ili9488"
+backend = "spi"
+brightness = 100
 width = 480
 height = 320
-device = "/dev/fb1"
-pixel_format = "RGB565"
-animation = "boot_sequence"
-
-
-##############################################
-# PLUGIN: AI BRAIN
-##############################################
-
-[plugins.ai_brain]
-enabled    = true
-
-# Set to true to call the OpenAI API instead of a local model
-use_openai = false
-api_key = ""
-api_url = "https://api.openai.com/v1/chat/completions"
-model = "gpt-4o-mini"
-timeout = 30
-auto_reply = false
-debug = false
-
-
-##############################################
-# PLUGIN: SCAN
-##############################################
-
-[plugins.scan]
-enabled  = true
-wifi     = false
-ble      = false
-ethernet = true
-
-# How often to run a scan cycle, in seconds
-interval = 5
-
-
-##############################################
-# PLUGIN: SNIFF
-##############################################
-
-[plugins.sniff]
-enabled      = true
-
-# Wireless interface to put into monitor mode
-interface    = "wlan0"
-
-# Hop across channels instead of staying on one
-channel_hop  = true
-
-# Seconds between channel hops
-hop_interval = 3
-
-
-##############################################
-# PLUGIN: DISPLAY
-# Plugin-level display settings; values here
-# are overridden by the top-level [display]
-# section when both are present.
-##############################################
-
-[plugins.display]
-enabled = true
-driver = "fb"
-device = "/dev/fb1"
-pixel_format = "RGB565"
-invert = false
-contrast = 50
-
-
-##############################################
-# PLUGIN: LOKI ANIMATION
-##############################################
-
-[plugins.loki_animation]
-enabled = true
-
-# Playback speed (frames per second multiplier)
-speed   = 2
-
-# Visual style preset: "default" is the only built-in style
-style   = "default"
-
-
-##############################################
-# PLUGIN: BETTERCAP
-##############################################
-
-[plugins.bettercap]
-enabled    = false
-
-# Full path to the bettercap binary
-path       = "/usr/local/bin/bettercap"
-
-# Start bettercap automatically when this plugin loads
-auto_start = false
-
-# Bettercap REST API address (used by AI brain and other plugins)
-host       = "127.0.0.1"
-port       = 8081
-
-
-##############################################
-# PLUGIN: GPS
-##############################################
-
-[plugins.gps]
-enabled = false
-device  = "/dev/ttyUSB0"
-baud    = 9600
-
-
-##############################################
-# PLUGIN: BLE
-##############################################
-
-[plugins.ble]
-enabled  = false
-scan     = false
-
-# Seconds between BLE scan cycles
-interval = 10
-
-
-##############################################
-# PLUGIN: UPS / BATTERY
-##############################################
-
-[plugins.ups]
-enabled         = false
-
-# Minimum battery percentage before shutdown warning
-battery_min     = 20
-
-# Gracefully shut down the system when battery falls below battery_min
-shutdown_on_low = true
-
-
-##############################################
-# PLUGIN: TOUCH
-##############################################
-
-[plugins.touch]
-enabled = false
-
-# Linux input event device for the touchscreen (XPT2046 or similar)
-device  = "/dev/input/event0"
-
-
-##############################################
-# PLUGIN: WIFI TOOLS
-##############################################
-
-[plugins.wifi_tools]
-enabled     = false
-auto_deauth = false
-auto_probe  = false
-
-
-##############################################
-# PLUGIN: PWNY
-##############################################
-
-[plugins.pwny]
-enabled     = false
-auto_attack = false
-aggressive  = false
-
-
-##############################################
-# PLUGIN: PWNAGOTCHI
-##############################################
-
-[plugins.pwnagotchi]
-enabled        = false
-personality    = "default"
-auto_handshake = false
-
-
-##############################################
-# PLUGIN: WPA-SEC HANDSHAKE FETCHER
-#
-# API KEY — do NOT put it here.
-# Set the environment variable instead:
-#   export LOKI_WPA_SEC_API_KEY="your-key"
-# Or in the systemd unit file:
-#   Environment=LOKI_WPA_SEC_API_KEY=your-key
-##############################################
-
-[plugins.wpa_sec]
-enabled = true
-api_key = ""
-auto_fetch = true
-auto_upload = true
-
-# Seconds between upload/fetch cycles
-interval    = 30
-
-
-##############################################
-# PLUGIN: WIGLE WIFI MAPPING
-#
-# Credentials — set via environment variables:
-#   LOKI_WIGLE_API_KEY  /  LOKI_WIGLE_USERNAME  /  LOKI_WIGLE_PASSWORD
-##############################################
-
-[plugins.wigle]
-enabled  = false
-api_key  = ""
-username = ""
-password = ""
-
-
-##############################################
-# PLUGIN: ONLINEHASHCRACK
-#
-# API key — set via LOKI_ONLINEHASH_API_KEY env var
-##############################################
-
-[plugins.onlinehash]
-enabled     = false
-api_key     = ""
-auto_upload = false
-
-
-##############################################
-# HARDWARE BOARD/PIN CONFIG (for tools/gen_config.py)
-##############################################
-
-[board]
-# Board identification
-BOARD_NAME    = "Orange Pi Zero 2W Loki"
+color_depth = 16
+theme = "default"
+
+# -------------------------------------------------------------------
+# Build-time hardware config (consumed by tools/gen_config.py)
+# -------------------------------------------------------------------
+[build.board]
+BOARD_NAME = "Raspberry Pi Loki"
 BOARD_VERSION = "1.0"
-BOARD_MODEL   = "OPI_ZERO_2W"
+BOARD_MODEL = "RPI_RS485_HAT"
 
-# Power configuration
-POWER_INPUT_VOLTAGE  = 5.0   # 5 V USB input from Flipper
-POWER_LOGIC_VOLTAGE  = 3.3   # 3.3 V logic level
-LDO_ENABLE_DELAY_MS  = 10    # LDO startup delay (ms)
+POWER_INPUT_VOLTAGE = 5.0
+POWER_LOGIC_VOLTAGE = 3.3
+LDO_ENABLE_DELAY_MS = 10
 
-# TFT display configuration
-TFT_WIDTH        = 480
-TFT_HEIGHT       = 320
-TFT_SPI_FREQ     = 40000000  # 40 MHz
-TFT_TYPE         = "ILI9488"
-TFT_COLOR_DEPTH  = 16        # bits per pixel
-TFT_ROTATION     = 0         # 0=Normal 1=90° 2=180° 3=270°
-TFT_BRIGHTNESS   = 100       # default brightness 0-100 %
+TFT_WIDTH = 480
+TFT_HEIGHT = 320
+TFT_SPI_FREQ = 8000000
+TFT_TYPE = "ILI9486"
+TFT_COLOR_DEPTH = 16
+TFT_ROTATION = 0
+TFT_BRIGHTNESS = 100
 
-# SD card configuration
-SD_SPI_FREQ    = 25000000    # 25 MHz
-SD_SECTOR_SIZE = 512         # bytes
-SD_FAST_MODE   = 1           # enable fast SPI after init
+SD_SPI_FREQ = 25000000
+SD_SECTOR_SIZE = 512
+SD_FAST_MODE = 1
 
-# Loki Credits Flash configuration (W25Q40)
-FLASH_IC_TYPE     = "W25Q40"
-FLASH_CAPACITY    = 524288   # 512 KiB in bytes
-FLASH_PAGE_SIZE   = 256      # bytes
-FLASH_SECTOR_SIZE = 4096     # bytes
-FLASH_SPI_FREQ    = 20000000 # 20 MHz
+FLASH_IC_TYPE = "W25Q40"
+FLASH_CAPACITY = 524288
+FLASH_PAGE_SIZE = 256
+FLASH_SECTOR_SIZE = 4096
+FLASH_SPI_FREQ = 20000000
 
-# EEPROM configuration (FT24C02A)
-EEPROM_IC_TYPE  = "FT24C02A"
-EEPROM_CAPACITY = 256        # bytes
-EEPROM_PAGE_SIZE = 8         # bytes
-EEPROM_I2C_FREQ = 100000     # 100 kHz standard mode
+EEPROM_IC_TYPE = "FT24C02A"
+EEPROM_CAPACITY = 256
+EEPROM_PAGE_SIZE = 8
+EEPROM_I2C_FREQ = 100000
 
-# UART Flipper configuration
-UART1_BAUD_RATE      = 115200
-UART1_DATA_BITS      = 8
-UART1_STOP_BITS      = 1
+UART1_BAUD_RATE = 115200
+UART1_DATA_BITS = 8
+UART1_STOP_BITS = 1
 UART1_RX_BUFFER_SIZE = 256
 UART1_TX_BUFFER_SIZE = 256
+UART1_RS485_ENABLED = 0
+UART1_RS485_TURNAROUND_US = 0
 
-# Decoupling capacitor values
-DECAP_BULK_UF    = 10    # 10 µF bulk
-DECAP_CERAMIC_UF = 0.1   # 0.1 µF ceramic
+DECAP_BULK_UF = 10
+DECAP_CERAMIC_UF = 0.1
+I2C_PULLUP_OHM = 4700
 
-# Pull-up resistors
-I2C_PULLUP_OHM = 4700    # 4.7 kΩ for I2C SDA/SCL
-
-# Error handling
-ENABLE_ERROR_LOGGING  = 1
+ENABLE_ERROR_LOGGING = 1
 ERROR_LOG_BUFFER_SIZE = 256
 
-# Timing constants (ms)
-INIT_DELAY_TFT    = 100
-INIT_DELAY_FLASH  = 10
+INIT_DELAY_TFT = 100
+INIT_DELAY_FLASH = 10
 INIT_DELAY_EEPROM = 5
 
-# ─────────────────────────────────────────────────────────────────────────────
-# [board.hex] — Integer values emitted as 0x… hex literals in C.
-#   TOML hex syntax (0x…) is used here for clarity; values are still integers.
-# ─────────────────────────────────────────────────────────────────────────────
-[board.hex]
-FLASH_JEDEC_ID  = 0xEF4013   # W25Q40 JEDEC ID
-EEPROM_I2C_ADDR = 0x50       # FT24C02A I2C 7-bit address
+[build.board.hex]
+FLASH_JEDEC_ID = 0xEF4013
+EEPROM_I2C_ADDR = 0x50
 
-# ─────────────────────────────────────────────────────────────────────────────
-# [board.raw] — Values emitted as raw C identifiers/expressions (no quotes).
-# ─────────────────────────────────────────────────────────────────────────────
-[board.raw]
+[build.board.raw]
 UART1_PARITY = "UART_PARITY_NONE"
+UART1_RS485_DE_GPIO = "RS485_DE_GPIO"
 
-# ─────────────────────────────────────────────────────────────────────────────
-# [pinout] — GPIO/SPI/I2C/UART pin numbers and PWM settings.
-# ─────────────────────────────────────────────────────────────────────────────
-[pinout]
-# GPIO pins
-GPIO_TFT_DC  = 18   # TFT Data/Command control
-GPIO_TFT_RST = 22   # TFT Reset
-GPIO_TFT_BL  = 7    # TFT Backlight (PWM capable)
+[build.pinout]
+GPIO_TFT_DC = 27
+GPIO_TFT_RST = 22
+GPIO_TFT_BL = 255
 
-# SPI0 pins (TFT display)
-SPI0_SCK  = 23
+SPI0_SCK = 23
 SPI0_MOSI = 19
 SPI0_MISO = 21
-SPI0_CS0  = 24      # Chip Select 0 (TFT)
-SPI0_CS1  = 26      # Chip Select 1 (TFT Touch, optional)
+SPI0_CS0 = 24
+SPI0_CS1 = 26
 
-# SPI1 pins (SD card)
-SPI1_SCK  = 29
+SPI1_SCK = 29
 SPI1_MOSI = 31
 SPI1_MISO = 33
-SPI1_CS0  = 32      # Chip Select 0 (SD Card)
+SPI1_CS0 = 32
 
-# SPI2 pins (Loki Credits Flash)
-SPI2_SCK  = 13
+SPI2_SCK = 13
 SPI2_MOSI = 11
 SPI2_MISO = 12
-SPI2_CS0  = 15      # Chip Select 0 (Flash)
+SPI2_CS0 = 15
 
-# I2C0 pins (EEPROM)
 I2C0_SDA = 3
 I2C0_SCL = 5
 
-# UART1 pins (Flipper Zero)
 UART1_TX = 8
 UART1_RX = 10
+RS485_DE_GPIO = 25
 
-# Power pins
-PIN_5V_IN   = 2
+PIN_5V_IN = 2
 PIN_3V3_OUT = 1
-PIN_GND     = 6
+PIN_GND = 6
 
-# PWM
-PWM_FREQ_DEFAULT = 1000   # 1 kHz backlight PWM
+PWM_FREQ_DEFAULT = 1000
 
-# ─────────────────────────────────────────────────────────────────────────────
-# [pinout.hex] — Integer values emitted as 0x… hex literals in C.
-# ─────────────────────────────────────────────────────────────────────────────
-[pinout.hex]
-EEPROM_ADDR = 0x50   # FT24C02A EEPROM I2C address
+[build.pinout.hex]
+EEPROM_ADDR = 0x50
 
-# ─────────────────────────────────────────────────────────────────────────────
-# [pinout.raw] — Device CS/alias definitions (raw C identifiers, no quotes).
-# ─────────────────────────────────────────────────────────────────────────────
-[pinout.raw]
-TFT_CS           = "SPI0_CS0"
-SD_CS            = "SPI1_CS0"
-FLASH_CS         = "SPI2_CS0"
+[build.pinout.raw]
+# SPI bus 0 chip-select for TFT: SPI0_CS0 => /dev/spidev0.0, SPI0_CS1 => /dev/spidev0.1
+TFT_CS = "SPI0_CS0"
+SD_CS = "SPI1_CS0"
+FLASH_CS = "SPI2_CS0"
 PWM_TFT_BACKLIGHT = "GPIO_TFT_BL"

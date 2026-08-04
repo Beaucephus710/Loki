@@ -8,7 +8,7 @@ set MODE=%1
 if "%MODE%"=="" set MODE=debug
 
 set HOST=%2
-if "%HOST%"=="" set HOST=raspberry-pi.local
+if "%HOST%"=="" set HOST=raspberrypi.local
 
 set USER=%3
 if "%USER%"=="" set USER=pi
@@ -180,7 +180,7 @@ if "%4"=="--install" (
     echo Usage:
     echo   build.bat debug
     echo   build.bat release
-    echo   build.bat debug raspberry-pi.local pi --install
+    echo   build.bat debug raspberrypi.local pi --install
 )
 
 exit /b 0
@@ -188,3 +188,4 @@ exit /b 0
 :compile_error
 echo [ERROR] Compilation failed
 exit /b 1
+

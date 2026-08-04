@@ -184,42 +184,21 @@ The AI brain consumes shared telemetry (AP/client counts and API health) from
 the Bettercap plugin and publishes its current action/probabilities through
 plugin state for other modules to consume.
 
-## Raspberry Pi Zero W installation (step-by-step)
+## Master configuration (`config.toml`)
 
-Use this path if you want to run Loki directly on a Raspberry Pi Zero W.
+Loki now uses a single master `config.toml` with a runtime-first structure inspired by Pwnagotchi:
 
-1. Prepare the board with **Raspberry Pi OS Lite (32-bit)**, enable SSH, and connect it to Wi-Fi.
-2. SSH into the Pi:
-   ```bash
-   ssh pi@raspberrypi.local
-   ```
-3. Install build dependencies on the Pi:
-   ```bash
-   sudo apt-get update
-   sudo apt-get install -y git make gcc
-   ```
-4. Clone the repository and enter it:
-   ```bash
-   git clone https://github.com/Fomorianshifter/Loki.git
-   cd Loki
-   ```
-5. Build natively for Pi Zero W (ARMv6):
-   ```bash
-   make clean
-   make DEBUG=1 CC=gcc CFLAGS="-Wall -Wextra -march=armv6zk -mtune=arm1176jzf-s -mfpu=vfp -mfloat-abi=hard -I."
-   ```
-6. Run the binary:
-   ```bash
-   sudo ./build/debug/loki_app
-   ```
-7. For an optimized release build:
-   ```bash
-   make clean
-   make DEBUG=0 CC=gcc CFLAGS="-Wall -Wextra -march=armv6zk -mtune=arm1176jzf-s -mfpu=vfp -mfloat-abi=hard -I."
-   sudo ./build/release/loki_app
-   ```
+- `[main]`, `[main.auth]`, `[main.network]`
+- `[main.plugins.*]` including plugin loader settings
+- `[ui]`, `[ui.web]`, `[ui.display]`
 
-If you cross-compile from another machine, ensure your compile flags target ARMv6, not the default ARMv7 settings in this repository's Makefile.
+Build-time C macros are generated from `[build.board]` and `[build.pinout]` by:
+
+```bash
+python3 tools/gen_config.py
+```
+
+The generated files are `board_config.h`, `pinout.h`, and `config.h`.
 
 ## Good ways to study this project
 
@@ -235,7 +214,7 @@ If you are learning from this repo, a strong reading order is:
 
 ## Hardware focus
 
-The repository was originally documented around Orange Pi Zero 2W hardware, and much of the current checked-in code and documentation still reflects that. The code also includes Raspberry Pi and Flipper-related intent in various places, so treat board assumptions as something to verify before wiring real hardware.
+The repository was originally documented around Raspberry Pi hardware, and much of the current checked-in code and documentation still reflects that. The code also includes Raspberry Pi and Flipper-related intent in various places, so treat board assumptions as something to verify before wiring real hardware.
 
 ## Important note
 
@@ -250,3 +229,4 @@ This README now focuses only on the most teachable and durable information. For 
 ## License
 
 MIT License. See `LICENSE`.
+
