@@ -19,6 +19,7 @@ Main source files in the current root-level layout include:
 
 - `main.c` — program entry point, signal handling, and example hardware tests
 - `system.c` / `system.h` — system startup, subsystem initialization, and shutdown
+- `loki_life.c` / `loki_life.h` — **Loki life-cycle system** (see below)
 - `log.c` / `log.h` — leveled logging macros and logger implementation
 - `memory.c` / `memory.h` — tracked allocation helpers such as `malloc_safe()` and `free_safe()`
 - `retry.c` / `retry.h` — retry strategies for transient hardware failures
@@ -43,11 +44,108 @@ At a high level, `main.c` shows a teachable embedded application structure:
 2. initialize logging
 3. install signal handlers for graceful shutdown
 4. call `system_init()`
-5. run sample hardware tests
-6. enter a loop waiting for Flipper messages
-7. call `system_shutdown()` before exit
+5. call `loki_init()` — birth Loki as an egg
+6. run sample hardware tests
+7. run `demo_loki_lifecycle()` — shows feeding, moods, and stage growth in one pass
+8. enter a loop: each iteration calls `loki_tick()` and routes Flipper commands to Loki actions
+9. call `system_shutdown()` before exit
 
 That pattern is a good starting point for your own SBC or hardware-control application.
+
+## Loki life-cycle system
+
+`loki_life.c` / `loki_life.h` implement the gameplay foundation for Loki's interactive behaviour.
+
+<<<<<<< HEAD
+- ✅ **Modular Architecture** - Clean separation of HAL, drivers, and application
+- ✅ **Hardware Abstraction Layer** - GPIO, SPI (3 buses), I2C, UART, PWM
+- ✅ **Device Drivers** - TFT display, SD card, Flash memory, EEPROM, Flipper UART
+- ✅ **Web UI Dashboard** - Built-in HTTP server; open `http://loki.local:8080/` in any browser
+- ✅ **Professional Logging** - 5 severity levels, auto source tracking, color output
+- ✅ **Memory Safety** - Safe allocation/free with leak detection in DEBUG mode
+- ✅ **Error Recovery** - Automatic retry with exponential backoff for transient errors
+- ✅ **Cross-Compilation** - Build on Windows, Mac, or Linux for any target
+- ✅ **Windows Support** - Native PowerShell and CMD build scripts
+- ✅ **CI/CD** - GitHub Actions workflow builds debug and release for every push/PR
+- ✅ **Production Ready** - Systemd integration, comprehensive error handling
+- ✅ **Full Documentation** - API docs, build guides, deployment procedures
+=======
+### Life stages
+>>>>>>> origin/main
+
+Loki begins as an egg and advances through four stages based on accumulated **growth points (gp)**:
+
+| Stage      | Threshold |
+|------------|-----------|
+| Egg        | starts here |
+| Hatchling  | 50 gp     |
+| Young      | 200 gp    |
+| Adult      | 500 gp    |
+
+Growth points are earned by feeding and interacting. The stage check runs automatically after every `loki_feed()`, `loki_interact()`, and `loki_tick()` call.
+
+### Feeding
+
+Three food qualities are available via `loki_feed(state, food_type)`:
+
+| Food            | Hunger reduction | Growth pts | Happiness boost |
+|-----------------|-----------------|------------|----------------|
+| `LOKI_FOOD_BASIC`   | 20 | 5  | 5  |
+| `LOKI_FOOD_TASTY`   | 40 | 10 | 15 |
+| `LOKI_FOOD_SPECIAL` | 60 | 20 | 25 |
+
+Feeding when Loki is not hungry halves all effects (overeating penalty).
+
+### Mood
+
+Mood is derived from hunger, happiness, and energy using a priority ladder:
+
+```
+HUNGRY  (hunger ≥ 70)
+SLEEPY  (energy ≤ 20)
+GRUMPY  (happiness ≤ 30 or hunger ≥ 50)
+HAPPY   (happiness ≥ 70)
+PLAYFUL (happiness ≥ 50 and energy ≥ 60)
+NEUTRAL (everything else)
+```
+
+When Loki is `SLEEPY` the tick function restores energy instead of draining it, modelling a natural sleep/wake cycle.
+
+### Animation states
+
+`loki_get_animation_state(state)` returns one of:
+
+| State                 | When shown |
+|-----------------------|-----------|
+| `LOKI_ANIM_EGG_IDLE`       | Default egg state |
+| `LOKI_ANIM_EGG_WIGGLE`     | Egg close to hatching |
+| `LOKI_ANIM_HATCHLING_IDLE` | Hatchling stage, neutral mood |
+| `LOKI_ANIM_EATING`         | Shortly after any feeding |
+| `LOKI_ANIM_SLEEPING`       | Mood is SLEEPY |
+| `LOKI_ANIM_HAPPY`          | Mood is HAPPY |
+| `LOKI_ANIM_GRUMPY`         | Mood is GRUMPY or HUNGRY |
+| `LOKI_ANIM_PLAYFUL`        | Mood is PLAYFUL |
+| `LOKI_ANIM_IDLE`           | Default for young/adult |
+
+### Core API
+
+```c
+void        loki_init(loki_state_t *state);
+void        loki_tick(loki_state_t *state, uint32_t delta_seconds);
+void        loki_feed(loki_state_t *state, loki_food_t food);
+void        loki_interact(loki_state_t *state);
+void        loki_update_mood(loki_state_t *state);
+void        loki_check_progression(loki_state_t *state);
+loki_anim_t loki_get_animation_state(const loki_state_t *state);
+void        loki_print_status(const loki_state_t *state);
+```
+
+### Extending the system
+
+- **More food types**: add entries to `loki_food_t` and handle them in `loki_feed()`.
+- **Persistence**: serialise `loki_state_t` to EEPROM or SD card — every field is a plain integer.
+- **Display rendering**: read `loki_get_animation_state()` in the render loop and switch on the returned enum to select sprite/frame sets.
+- **Flipper commands**: the main loop already maps Flipper command bytes `0x10`–`0x30` to feed and interact actions.
 
 ## Concepts worth learning from Loki
 
@@ -105,44 +203,269 @@ make docs
 make clean
 ```
 
-If your environment is missing the ARM cross-compiler, builds that depend on `arm-linux-gnueabihf-gcc` will fail until the toolchain is installed.
+The maintained native target is `loki_core.so`, a small shared library used by
+`loki.py`. The interactive application is Python-based. Use Python 3.11 or
+newer, then install the display dependency before starting the application:
 
-## Raspberry Pi Zero W installation (step-by-step)
+```bash
+python3 -m pip install -r requirements.txt
+python3 main.py
+```
 
-Use this path if you want to run Loki directly on a Raspberry Pi Zero W.
+On Debian-based SBC images, `sudo apt install python3-pil` is an equivalent
+system-package installation for the display renderer. Without Pillow, Loki
+still starts its configuration UI and non-display plugins, but display and
+dragon animation rendering fall back safely.
 
-1. Prepare the board with **Raspberry Pi OS Lite (32-bit)**, enable SSH, and connect it to Wi-Fi.
-2. SSH into the Pi:
+Use `make test` to run the Python test suite.
+
+## Local configuration UI
+
+Loki uses the same USB-network addresses as a typical Pwnagotchi setup:
+Loki is `10.0.0.2` and the connected computer is `10.0.0.1`. Install the
+included systemd-networkd profile on Loki once, then restart networking:
+
+<<<<<<< HEAD
+**Code Review Checklist:**
+- ✅ Compiles without warnings
+- ✅ Follows naming conventions
+- ✅ Includes LOG_* calls for debugging
+- ✅ Error codes checked and logged
+- ✅ malloc_safe/free_safe for dynamic allocation
+- ✅ Doxygen comments for public functions
+- ✅ Tested on target hardware
+
+---
+
+## 📜 License
+
+**MIT License** - See [LICENSE](LICENSE) for full text
+
+**Summary:**
+- ✅ Free for personal and commercial use
+- ✅ Can modify and distribute
+- ✅ Must include license notice
+- ✅ No warranty provided
+
+---
+
+## 📞 Support & Resources
+
+### Documentation
+- **[BUILD.md](BUILD.md)** - Detailed build system guide
+- **[BUILD_WINDOWS.md](BUILD_WINDOWS.md)** - Windows platform guide
+- **[DEPLOYMENT.md](DEPLOYMENT.md)** - Production deployment procedures
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** - Code standards and development
+- **[FILE_REFERENCE.md](FILE_REFERENCE.md)** - Complete file inventory
+
+### Datasheets & References
+- [Orange Pi Zero 2W](http://orangepi.org)
+- [ARM GNU Toolchain](https://developer.arm.com)
+- [ILI9488 Display](http://www.displayfuture.com/Display/ili9488_specifications.pdf)
+- [W25Q40 Flash](https://www.winbond.com/hq/product/code-storage-flash-memory/)
+- [Flipper Zero](https://flipperzero.one)
+- [Raspberry Pi](https://www.raspberrypi.com)
+
+### Getting Help
+- Check [Troubleshooting](#troubleshooting) section
+- Review code examples in this README
+- Read BUILD.md and DEPLOYMENT.md
+- Check documentation with `make docs`
+
+---
+
+## 📈 Project Statistics
+
+- **Lines of Code**: ~6,400
+- **Total Files**: 40+
+- **Documentation Pages**: 15+
+- **Supported Platforms**: 4
+- **Device Drivers**: 5
+- **HAL Modules**: 5
+- **Build Targets**: 12
+
+---
+
+## 🌐 Web UI
+
+Loki includes a lightweight HTTP server that lets you monitor the device from
+any browser on the local network — no extra software needed.
+
+### Endpoints
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /` | HTML dashboard — board info, hardware summary, API links |
+| `GET /api/status` | JSON — app name, version, board, uptime, build type, mood/state |
+
+### Quick access
+
+```
+http://<device-ip>:8080/         # by IP address (always works)
+http://loki.local:8080/          # friendly name (requires mDNS — see below)
+```
+
+### JSON status example
+
+```json
+{
+  "app": "Loki",
+  "version": "1.0",
+  "board": "Orange Pi Zero 2W Loki",
+  "model": "OPI_ZERO_2W",
+  "uptime_seconds": 142,
+  "build": "release",
+  "mood": "calm",
+  "state": "running"
+}
+```
+
+### Setting up `loki.local`
+
+1. **Set the device hostname** on the Orange Pi:
    ```bash
-   ssh pi@raspberrypi.local
-   ```
-3. Install build dependencies on the Pi:
-   ```bash
-   sudo apt-get update
-   sudo apt-get install -y git make gcc
-   ```
-4. Clone the repository and enter it:
-   ```bash
-   git clone https://github.com/Fomorianshifter/Loki.git
-   cd Loki
-   ```
-5. Build natively for Pi Zero W (ARMv6):
-   ```bash
-   make clean
-   make DEBUG=1 CC=gcc CFLAGS="-Wall -Wextra -march=armv6zk -mtune=arm1176jzf-s -mfpu=vfp -mfloat-abi=hard -I."
-   ```
-6. Run the binary:
-   ```bash
-   sudo ./build/debug/loki_app
-   ```
-7. For an optimized release build:
-   ```bash
-   make clean
-   make DEBUG=0 CC=gcc CFLAGS="-Wall -Wextra -march=armv6zk -mtune=arm1176jzf-s -mfpu=vfp -mfloat-abi=hard -I."
-   sudo ./build/release/loki_app
+   sudo hostnamectl set-hostname loki
+   sudo reboot
    ```
 
-If you cross-compile from another machine, ensure your compile flags target ARMv6, not the default ARMv7 settings in this repository's Makefile.
+2. **Install Avahi** (mDNS daemon) so `loki.local` resolves on the LAN:
+   ```bash
+   sudo apt-get install -y avahi-daemon
+   sudo systemctl enable --now avahi-daemon
+   ```
+
+3. Open **`http://loki.local:8080/`** in a browser on any machine on the same LAN.
+
+> **Note**: macOS and Windows 10+ resolve `.local` names automatically via Bonjour/mDNS.
+> Linux clients need `avahi-daemon` installed as well (`sudo apt-get install avahi-daemon`).
+
+### Configuration
+
+Override defaults at build time via `-D` flags:
+
+```bash
+# Disable Web UI entirely
+make DEBUG=0 CFLAGS+="-DWEBUI_ENABLED=0"
+
+# Use a different port
+make DEBUG=0 CFLAGS+="-DWEBUI_PORT=9090"
+```
+
+See [`DEPLOYMENT.md`](DEPLOYMENT.md#web-ui) for full deployment details.
+
+---
+
+## 🚀 Roadmap
+
+### Planned Features
+- [ ] Bluetooth support (ESP32)
+- [ ] WiFi integration (ESP32)
+- [ ] Multi-threading support
+- [ ] Power management modes
+- [ ] Watchdog timer integration
+- [ ] SD card filesystem support (FatFS)
+- [ ] USB HID support
+- [ ] Real-time clock (RTC) integration
+
+### Performance Optimization
+- [ ] Interrupt-driven I/O
+- [ ] DMA for SPI transfers
+- [ ] Hardware acceleration where possible
+- [ ] Cache optimization
+- [ ] Memory pool allocation
+
+---
+
+## 🎉 Acknowledgments
+
+Built with ❤️ for the embedded systems community.
+
+---
+
+**Loki Embedded System** - Making embedded development easier, one HAL at a time.
+
+```
+    /__\
+   /    \
+  /      \
+ /________\
+
+ "In ancient Norse mythology, Loki is a shape-shifter.
+  This codebase adapts to any embedded system with ease."
+=======
+```bash
+sudo install -D -m 644 network/loki-usb0.network /etc/systemd/network/10-loki-usb0.network
+sudo systemctl enable --now systemd-networkd
+sudo systemctl restart systemd-networkd
+>>>>>>> origin/main
+```
+
+Set the computer's USB Ethernet interface to the static address
+`10.0.0.1/24`, connect to Loki over USB, and open `http://10.0.0.2:8080`.
+On Linux, this can be configured with:
+
+```bash
+sudo ip address replace 10.0.0.1/24 dev <usb-interface>
+sudo ip link set <usb-interface> up
+```
+
+The UI accepts connections only from that USB subnet. Edit values, save them,
+then restart Loki for the updated configuration to take effect. Configure the
+WPA-SEC plugin key outside the repository:
+
+```bash
+export LOKI_WPA_SEC_API_KEY="your-key"
+python3 main.py
+```
+
+For a systemd-managed Loki process, persist the key in an override instead of
+adding it to `config.toml`:
+
+```bash
+sudo systemctl edit loki
+# Add: [Service]
+# Add: Environment=LOKI_WPA_SEC_API_KEY=your-key
+```
+
+Set `[web_ui].enabled = false` in `config.toml` to disable the editor. For a
+strictly local-only UI instead, set `[web_ui].host = "127.0.0.1"`.
+
+## A2C AI brain (Pwnagotchi-style adaptive loop)
+
+Loki now includes a local actor-critic plugin at `plugins/ai_brain.py` that
+runs a lightweight A2C loop without external ML dependencies.
+
+1. Enable Bettercap telemetry and the AI brain in `config.toml`:
+   - `[plugins.bettercap].enabled = true`
+   - `[plugins.ai_brain].enabled = true`
+   - `[plugins.ai_brain].learning = true` (online updates)
+2. Start Loki normally with `python3 main.py`.
+3. Let it run for a while; policy/value weights are persisted to:
+   - `~/.local/share/loki/a2c_state.json`
+4. For inference-only behavior, set:
+   - `[plugins.ai_brain].learning = false`
+5. To make inference deterministic (no action sampling), set:
+   - `[plugins.ai_brain].deterministic = true`
+
+The AI brain consumes shared telemetry (AP/client counts and API health) from
+the Bettercap plugin and publishes its current action/probabilities through
+plugin state for other modules to consume.
+
+## Master configuration (`config.toml`)
+
+Loki now uses a single master `config.toml` with a runtime-first structure inspired by Pwnagotchi:
+
+- `[main]`, `[main.auth]`, `[main.network]`
+- `[main.plugins.*]` including plugin loader settings
+- `[ui]`, `[ui.web]`, `[ui.display]`
+
+Build-time C macros are generated from `[build.board]` and `[build.pinout]` by:
+
+```bash
+python3 tools/gen_config.py
+```
+
+The generated files are `board_config.h`, `pinout.h`, and `config.h`.
 
 ## Good ways to study this project
 
@@ -151,14 +474,15 @@ If you are learning from this repo, a strong reading order is:
 1. `README.md`
 2. `main.c`
 3. `system.c` and `system.h`
-4. `log.*`, `memory.*`, and `retry.*`
-5. `spi.*`, `i2c.*`, `uart.*`, `gpio.*`, and `pwm.*`
-6. the device drivers
-7. `BUILD.md` and `DEPLOYMENT.md`
+4. `loki_life.h` and `loki_life.c` — the life-cycle system
+5. `log.*`, `memory.*`, and `retry.*`
+6. `spi.*`, `i2c.*`, `uart.*`, `gpio.*`, and `pwm.*`
+7. the device drivers
+8. `BUILD.md` and `DEPLOYMENT.md`
 
 ## Hardware focus
 
-The repository was originally documented around Orange Pi Zero 2W hardware, and much of the current checked-in code and documentation still reflects that. The code also includes Raspberry Pi and Flipper-related intent in various places, so treat board assumptions as something to verify before wiring real hardware.
+The repository was originally documented around Raspberry Pi hardware, and much of the current checked-in code and documentation still reflects that. The code also includes Raspberry Pi and Flipper-related intent in various places, so treat board assumptions as something to verify before wiring real hardware.
 
 ## Important note
 
@@ -173,3 +497,4 @@ This README now focuses only on the most teachable and durable information. For 
 ## License
 
 MIT License. See `LICENSE`.
+

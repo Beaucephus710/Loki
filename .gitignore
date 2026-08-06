@@ -1,10 +1,71 @@
-__pycache__/
-*.py[cod]
-venv/
-.venv/
-*.log
+
+# Debug files
+# Dragon system — generated/persistent files (not for version control)
+# Executables
+# Kernel Module Compile Results
+# Libraries
+# Linker output
+# Object files
+# Precompiled Headers
+# Prerequisites
+# Shared objects (inc. Windows DLLs)
+# debug information files
+*.a
+*.app
 *.bak
 *.bak[0-9]*
+*.cmd
+*.d
+*.dSYM/
+*.dll
+*.dwo
+<<<<<<< HEAD
+
+# Build output directories
+build/
+
+=======
+*.dylib
+*.elf
+*.exe
+*.exp
+*.gch
+*.gif
+*.hex
+*.i*86
+*.idb
+*.ilk
+*.ko
+*.la
+*.lib
+*.lo
+*.log
+*.map
+*.mod*
+*.o
+*.obj
+*.out
+*.pch
+*.pdb
+*.py[cod]
 *.save
-.vscode/
+*.so
+*.so.*
+*.su
+*.tmp
+*.x86_64
 .idea/
+.tmp_versions/
+.venv/
+.vscode/
+Mkfile.old
+Module.symvers
+__pycache__/
+dkms.conf
+dragon_state.json
+loki.gif
+loki_preview.png
+modules.order
+venv/
+build/
+>>>>>>> origin/main

@@ -1,177 +1,206 @@
-##############################################
-# LOKI GLOBAL SETTINGS
-##############################################
+# Loki master configuration
+# Runtime editable (Pwnagotchi-style layout) with build sections for C headers.
 
-color = false
-boot_animation = true
-regular_animation = true
-level_speed = 2
-ascii_mode = true
+[main]
+name = "loki"
+lang = "en"
+iface = "wlan0"
+mode = "interactive"
+confd = "/etc/loki/conf.d/"
+runtime_root = "/etc/loki"
+state_dir = "/var/lib/loki"
+log_dir = "/var/log/loki"
+custom_plugin_repos = []
+custom_plugins = "/usr/local/share/loki/custom-plugins/"
 
+[main.auth]
+enabled = true
+method = "token"
+token = "change-me"
+username = "loki"
+password = "change-me"
+allow_remote = false
+allowed_users = ["loki"]
 
-##############################################
-# DISPLAY (top-level – used by LokiConfig.display())
-##############################################
-[display]
+[main.network]
+enabled = true
+hostname = "loki-rpi"
+dhcp = true
+ipv4_address = ""
+gateway = ""
+dns = ["1.1.1.1", "8.8.8.8"]
+country = "US"
+
+[main.plugins]
+enabled = true
+autodiscover = true
+directory = "/usr/local/share/loki/plugins/"
+startup = ["status", "telemetry"]
+
+[main.plugins.loaders]
+python_enabled = true
+python_entrypoint = "plugin.py"
+python_manifest = "plugin.toml"
+binary_enabled = true
+binary_extension = ".so"
+wasm_enabled = false
+shell_enabled = false
+
+[main.plugins.security]
+allow_unsigned = false
+allow_network_plugins = false
+sandbox = "restricted"
+
+[main.plugins.status]
+enabled = true
+refresh_interval = 5
+
+[main.plugins.telemetry]
+enabled = true
+publish_interval = 30
+endpoint = ""
+api_key = ""
+
+[main.plugins.auto-update]
+enabled = false
+interval_days = 7
+token = ""
+
+[main.log]
+path = "/var/log/loki/loki.log"
+path_debug = "/var/log/loki/loki-debug.log"
+
+[main.log.rotation]
+enabled = true
+size = "10M"
+
+[ui]
+invert = false
+cursor = true
+fps = 0.0
+
+[ui.web]
+enabled = true
+address = "0.0.0.0"
+auth = true
+username = "loki"
+password = "change-me"
+origin = ""
+port = 8080
+
+[ui.display]
+enabled = true
+rotation = 0
+type = "ili9488"
+backend = "spi"
+brightness = 100
 width = 480
 height = 320
-device = "/dev/fb1"
-pixel_format = "RGB565"
-animation = "boot_sequence"
+color_depth = 16
+theme = "default"
 
+# -------------------------------------------------------------------
+# Build-time hardware config (consumed by tools/gen_config.py)
+# -------------------------------------------------------------------
+[build.board]
+BOARD_NAME = "Raspberry Pi Loki"
+BOARD_VERSION = "1.0"
+BOARD_MODEL = "RPI_RS485_HAT"
 
-##############################################
-# PLUGIN: AI BRAIN
-##############################################
-[plugins.ai_brain]
-enabled = true
-use_openai = false
-api_key = ""
-api_url = "https://api.openai.com/v1/chat/completions"
-model = "gpt-4o-mini"
-timeout = 30
-auto_reply = false
-debug = false
+POWER_INPUT_VOLTAGE = 5.0
+POWER_LOGIC_VOLTAGE = 3.3
+LDO_ENABLE_DELAY_MS = 10
 
+TFT_WIDTH = 480
+TFT_HEIGHT = 320
+TFT_SPI_FREQ = 8000000
+TFT_TYPE = "ILI9486"
+TFT_COLOR_DEPTH = 16
+TFT_ROTATION = 0
+TFT_BRIGHTNESS = 100
 
-##############################################
-# PLUGIN: SCAN
-##############################################
-[plugins.scan]
-enabled = true
-wifi = false
-ble = false
-ethernet = true
-interval = 5
+SD_SPI_FREQ = 25000000
+SD_SECTOR_SIZE = 512
+SD_FAST_MODE = 1
 
+FLASH_IC_TYPE = "W25Q40"
+FLASH_CAPACITY = 524288
+FLASH_PAGE_SIZE = 256
+FLASH_SECTOR_SIZE = 4096
+FLASH_SPI_FREQ = 20000000
 
-##############################################
-# PLUGIN: SNIFF
-##############################################
-[plugins.sniff]
-enabled = true
-interface = "wlan0"
-channel_hop = true
-hop_interval = 3
+EEPROM_IC_TYPE = "FT24C02A"
+EEPROM_CAPACITY = 256
+EEPROM_PAGE_SIZE = 8
+EEPROM_I2C_FREQ = 100000
 
+UART1_BAUD_RATE = 115200
+UART1_DATA_BITS = 8
+UART1_STOP_BITS = 1
+UART1_RX_BUFFER_SIZE = 256
+UART1_TX_BUFFER_SIZE = 256
+UART1_RS485_ENABLED = 0
+UART1_RS485_TURNAROUND_US = 0
 
-##############################################
-# PLUGIN: DISPLAY
-##############################################
-[plugins.display]
-enabled = true
-driver = "fb"
-device = "/dev/fb1"
-pixel_format = "RGB565"
-invert = false
-contrast = 50
+DECAP_BULK_UF = 10
+DECAP_CERAMIC_UF = 0.1
+I2C_PULLUP_OHM = 4700
 
+ENABLE_ERROR_LOGGING = 1
+ERROR_LOG_BUFFER_SIZE = 256
 
-##############################################
-# PLUGIN: LOKI ANIMATION
-##############################################
-[plugins.loki_animation]
-enabled = true
-speed = 2
-style = "default"
+INIT_DELAY_TFT = 100
+INIT_DELAY_FLASH = 10
+INIT_DELAY_EEPROM = 5
 
+[build.board.hex]
+FLASH_JEDEC_ID = 0xEF4013
+EEPROM_I2C_ADDR = 0x50
 
-##############################################
-# PLUGIN: BETTERCAP
-##############################################
-[plugins.bettercap]
-enabled = false
-path = "/usr/local/bin/bettercap"
-auto_start = false
+[build.board.raw]
+UART1_PARITY = "UART_PARITY_NONE"
+UART1_RS485_DE_GPIO = "RS485_DE_GPIO"
 
+[build.pinout]
+GPIO_TFT_DC = 27
+GPIO_TFT_RST = 22
+GPIO_TFT_BL = 255
 
-##############################################
-# PLUGIN: GPS
-##############################################
-[plugins.gps]
-enabled = false
-device = "/dev/ttyUSB0"
-baud = 9600
+SPI0_SCK = 23
+SPI0_MOSI = 19
+SPI0_MISO = 21
+SPI0_CS0 = 24
+SPI0_CS1 = 26
 
+SPI1_SCK = 29
+SPI1_MOSI = 31
+SPI1_MISO = 33
+SPI1_CS0 = 32
 
-##############################################
-# PLUGIN: BLE
-##############################################
-[plugins.ble]
-enabled = false
-scan = false
-interval = 10
+SPI2_SCK = 13
+SPI2_MOSI = 11
+SPI2_MISO = 12
+SPI2_CS0 = 15
 
+I2C0_SDA = 3
+I2C0_SCL = 5
 
-##############################################
-# PLUGIN: UPS
-##############################################
-[plugins.ups]
-enabled = false
-battery_min = 20
-shutdown_on_low = true
+UART1_TX = 8
+UART1_RX = 10
+RS485_DE_GPIO = 25
 
+PIN_5V_IN = 2
+PIN_3V3_OUT = 1
+PIN_GND = 6
 
-##############################################
-# PLUGIN: TOUCH
-##############################################
-[plugins.touch]
-enabled = false
-device = "/dev/input/event0"
+PWM_FREQ_DEFAULT = 1000
 
+[build.pinout.hex]
+EEPROM_ADDR = 0x50
 
-##############################################
-# PLUGIN: WIFI TOOLS
-##############################################
-[plugins.wifi_tools]
-enabled = false
-auto_deauth = false
-auto_probe = false
-
-
-##############################################
-# PLUGIN: PWNY
-##############################################
-[plugins.pwny]
-enabled = false
-auto_attack = false
-aggressive = false
-
-
-##############################################
-# PLUGIN: PWNAGOTCHI
-##############################################
-[plugins.pwnagotchi]
-enabled = false
-personality = "default"
-auto_handshake = false
-
-
-##############################################
-# PLUGIN: WPA-SEC HANDSHAKE FETCHER
-##############################################
-[plugins.wpa_sec]
-enabled = true
-api_key = ""
-auto_fetch = true
-auto_upload = true
-interval = 30
-
-
-##############################################
-# PLUGIN: WIGLE WIFI MAPPING
-##############################################
-[plugins.wigle]
-enabled = false
-api_key = ""
-username = ""
-password = ""
-
-
-##############################################
-# PLUGIN: ONLINEHASHCRACK
-##############################################
-[plugins.onlinehash]
-enabled = false
-api_key = ""
-auto_upload = false
+[build.pinout.raw]
+# SPI bus 0 chip-select for TFT: SPI0_CS0 => /dev/spidev0.0, SPI0_CS1 => /dev/spidev0.1
+TFT_CS = "SPI0_CS0"
+SD_CS = "SPI1_CS0"
+FLASH_CS = "SPI2_CS0"
+PWM_TFT_BACKLIGHT = "GPIO_TFT_BL"
