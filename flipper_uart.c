@@ -198,6 +198,7 @@ hal_status_t flipper_uart_deinit(void)
 #include "flipper_uart.h"
 #include "uart.h"
 #include "config.h"
+#include <stdlib.h>
 #include <string.h>
 #include <stdlib.h>
 
